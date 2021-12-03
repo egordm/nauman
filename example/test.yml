@@ -1,0 +1,49 @@
+id: test
+name: Test Flow introspecting Rockstar Repo
+cwd: ./example
+env:
+  ROCKSTAR_REPO: https://github.com/RockstarLang/rockstar.git
+
+tasks:
+  - name: Create a temporary directory
+    run: mkdir tmp
+  - name: Clone Rockstar Repo
+    run: git clone $ROCKSTAR_REPO
+    cwd: tmp
+  - name: Download Rockstar Readme
+    run: |
+      curl -s https://raw.githubusercontent.com/RockstarLang/rockstar/main/README.md > README.md
+      cat README.md
+    cwd: tmp
+  - name: Show last 10 commits
+    run: git log -n 10
+    cwd: tmp/rockstar
+  - name: Setup satriani compiler
+    run: |
+      yarn install
+      yarn pegjs
+    cwd: tmp/rockstar/satriani
+  - name: Run a rockstar program
+    run: node rockstar ../examples/hello-world.rock
+    cwd: tmp/rockstar/satriani
+  - name: Cleanup
+    run: rm -rf tmp
+
+
+hooks:
+  before:
+    - name: Before Scenario
+      run: echo $(pwd)
+  after:
+    - name: After Scenario
+      run: ls
+  before_task:
+    - name: Before Task
+      run: echo $(pwd)
+  after_task:
+    - name: Before Task
+      run: ls
+
+logging:
+  - type: file
+    split: true
