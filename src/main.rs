@@ -5,11 +5,10 @@ use crate::execution::execute_flow;
 
 mod common;
 mod config;
-mod output;
+mod logging;
 mod flow;
 mod execution;
 mod pprint;
-mod logging;
 
 fn main() {
     let contents = fs::read_to_string("example/test.yml")

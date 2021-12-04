@@ -6,9 +6,9 @@ use std::{
     process::Stdio,
     os::unix::io::{AsRawFd, FromRawFd},
 };
-use crate::{flow, flow::CommandId, output::{MultiplexedOutput, Output}, common::Env, pprint, output};
+use crate::{flow, flow::CommandId, logging::{MultiplexedOutput, OutputStream, DualOutputStream, DualWriter}, common::Env, pprint, logging};
 use anyhow::{Context as AnyhowContext, Result};
-use crate::output::{DualOutput, DualWriter};
+use crate::logging::PipeSpec;
 
 
 #[derive(Debug, Clone)]
@@ -48,7 +48,7 @@ const BUFFER_SIZE: usize = 1024; // 1 KB
 
 pub fn capture_command(
     child: &std::process::Child,
-    output: &mut DualOutput,
+    output: &mut DualOutputStream,
 ) -> Result<()> {
     // TODO: split into two functions
     let mut buffer = [0; BUFFER_SIZE];
@@ -98,7 +98,7 @@ pub fn capture_command(
 pub fn execute_command(
     command: &flow::Command,
     context: &mut Context,
-    output: &mut DualOutput,
+    output: &mut DualOutputStream,
 ) -> Result<ExecutionResult> {
     // Build env
     let mut env = context.env.clone();
@@ -140,7 +140,7 @@ impl Executor {
         &mut self,
         command_id: &CommandId,
         command: &flow::Command,
-        output: &mut DualOutput,
+        output: &mut DualOutputStream,
     ) -> Result<ExecutionResult> {
         self.context.current = command_id.clone();
         let result = execute_command(command, &mut self.context, output)?;
@@ -164,7 +164,10 @@ pub fn execute_flow(
         previous: None,
     });
 
-    let mut output = output::from_config(&flow.logging);
+
+    let mut output = DualOutputStream::from_spec(
+        PipeSpec::from_config(&flow.logging)
+    );
 
     let mut results = Vec::new();
     for (command_id, command) in flow.iter() {

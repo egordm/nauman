@@ -2,10 +2,11 @@ use std::{
     fs,
     io::{self, BufWriter, Write},
     sync::{Mutex},
+    ops::Index,
+    path::Path,
 };
-use std::ops::Index;
-use std::path::Path;
 use crate::config::{LoggingConfig, LogHandler, LogHandlerType};
+use crate::logging::{InputStream, OutputStreamSpec, PipeSpec};
 
 pub struct Stdout {
     pub stream: io::Stdout,
@@ -75,7 +76,7 @@ impl std::io::Write for Null {
     }
 }
 
-pub enum Output {
+pub enum OutputStream {
     Stdout(Stdout),
     Stderr(Stderr),
     File(File),
@@ -83,70 +84,83 @@ pub enum Output {
     Null(Null),
 }
 
-impl Output {
+impl OutputStream {
     pub fn new_stdout() -> Self {
-        Output::Stdout(Stdout {
+        OutputStream::Stdout(Stdout {
             stream: io::stdout(),
         })
     }
 
     pub fn new_stderr() -> Self {
-        Output::Stderr(Stderr {
+        OutputStream::Stderr(Stderr {
             stream: io::stderr(),
         })
     }
 
-    pub fn new_file(path: impl AsRef<Path>) -> Self {
+    pub fn new_file(path: impl AsRef<Path>, append: bool) -> Self {
         let file = fs::OpenOptions::new()
             .create(true)
-            .append(true)
+            .write(true)
+            .append(append)
             .open(path)
             .unwrap(); // TODO: handle error
-        Output::File(File {
+        OutputStream::File(File {
             stream: Mutex::new(BufWriter::new(file)),
         })
     }
 
     pub fn new_writer(stream: Box<dyn Write + Send>) -> Self {
-        Output::Writer(Writer {
+        OutputStream::Writer(Writer {
             stream: Mutex::new(stream),
         })
     }
 
     pub fn new_null() -> Self {
-        Output::Null(Null)
+        OutputStream::Null(Null)
     }
 }
 
-impl std::io::Write for Output {
+impl std::io::Write for OutputStream {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
         match self {
-            Output::Stdout(ref mut stdout) => stdout.write(buf),
-            Output::Stderr(ref mut stderr) => stderr.write(buf),
-            Output::File(ref mut file) => file.write(buf),
-            Output::Writer(ref mut writer) => writer.write(buf),
-            Output::Null(ref mut null) => null.write(buf),
+            OutputStream::Stdout(ref mut stdout) => stdout.write(buf),
+            OutputStream::Stderr(ref mut stderr) => stderr.write(buf),
+            OutputStream::File(ref mut file) => file.write(buf),
+            OutputStream::Writer(ref mut writer) => writer.write(buf),
+            OutputStream::Null(ref mut null) => null.write(buf),
         }
     }
 
     fn flush(&mut self) -> io::Result<()> {
         match self {
-            Output::Stdout(ref mut stdout) => stdout.flush(),
-            Output::Stderr(ref mut stderr) => stderr.flush(),
-            Output::File(ref mut file) => file.flush(),
-            Output::Writer(ref mut writer) => writer.flush(),
-            Output::Null(ref mut null) => null.flush(),
+            OutputStream::Stdout(ref mut stdout) => stdout.flush(),
+            OutputStream::Stderr(ref mut stderr) => stderr.flush(),
+            OutputStream::File(ref mut file) => file.flush(),
+            OutputStream::Writer(ref mut writer) => writer.flush(),
+            OutputStream::Null(ref mut null) => null.flush(),
+        }
+    }
+}
+
+impl From<OutputStreamSpec> for OutputStream {
+    fn from(spec: OutputStreamSpec) -> Self {
+        match spec {
+            OutputStreamSpec::Stdout => OutputStream::new_stdout(),
+            OutputStreamSpec::Stderr => OutputStream::new_stderr(),
+            OutputStreamSpec::File(f) => OutputStream::new_file(
+                f.file, f.append && !f.create,
+            )
         }
     }
 }
 
 pub struct MultiplexedOutput {
-    outputs: Vec<Output>,
+    outputs: Vec<OutputStream>,
 }
 
-impl Into<Output> for MultiplexedOutput {
-    fn into(self) -> Output {
-        Output::new_writer(Box::new(self))
+impl Into<OutputStream> for MultiplexedOutput {
+    fn into(self) -> OutputStream {
+        OutputStream::new_writer(Box::new(self))
     }
 }
 
@@ -155,7 +169,7 @@ impl MultiplexedOutput {
         MultiplexedOutput { outputs: Vec::new() }
     }
 
-    pub fn add(&mut self, output: Output) {
+    pub fn add(&mut self, output: OutputStream) {
         self.outputs.push(output);
     }
 }
@@ -184,18 +198,37 @@ pub trait DualWriter {
     fn flush_stderr(&mut self) -> io::Result<()>;
 }
 
-pub struct DualOutput {
-    pub stdout: Output,
-    pub stderr: Output,
+pub struct DualOutputStream {
+    pub stdout: OutputStream,
+    pub stderr: OutputStream,
 }
 
-impl DualOutput {
-    pub fn new(stdout: Output, stderr: Output) -> Self {
-        DualOutput { stdout, stderr }
+impl DualOutputStream {
+    pub fn new(stdout: OutputStream, stderr: OutputStream) -> Self {
+        DualOutputStream { stdout, stderr }
+    }
+
+    pub fn from_spec(specs: Vec<PipeSpec>) -> Self {
+        let mut stdout = MultiplexedOutput::new();
+        let mut stderr = MultiplexedOutput::new();
+
+        for PipeSpec { output, input } in specs {
+            let stream = output.into();
+            match input {
+                InputStream::Stdout => {
+                    stdout.add(stream);
+                }
+                InputStream::Stderr => {
+                    stderr.add(stream);
+                }
+            }
+        }
+
+        Self::new(stdout.into(), stderr.into())
     }
 }
 
-impl DualWriter for DualOutput {
+impl DualWriter for DualOutputStream {
     fn write_stdout(&mut self, buf: &[u8]) -> io::Result<usize> {
         self.stdout.write(buf)
     }
@@ -211,43 +244,4 @@ impl DualWriter for DualOutput {
     fn flush_stderr(&mut self) -> io::Result<()> {
         self.stderr.flush()
     }
-}
-
-pub fn output_from_handler(handler: &LogHandler) -> DualOutput {
-    let stdout = if handler.options.stdout {
-        match &handler.handler {
-            LogHandlerType::File(f) => Output::new_file(
-                f.output.clone().unwrap_or("stdout.log".to_string())
-            ),
-            LogHandlerType::Console => Output::new_stdout(),
-        }
-    } else {
-        Output::new_null()
-    };
-
-    let stderr = if handler.options.stderr {
-        match &handler.handler {
-            LogHandlerType::File(f) => Output::new_file(
-                f.output.clone().unwrap_or("stderr.log".to_string())
-            ),
-            LogHandlerType::Console => Output::new_stderr(),
-        }
-    } else {
-        Output::new_null()
-    };
-
-    DualOutput::new(stdout, stderr)
-}
-
-pub fn from_config(config: &LoggingConfig) -> DualOutput {
-    let mut output_stdout = MultiplexedOutput::new();
-    let mut output_stderr = MultiplexedOutput::new();
-
-    for handler in &config.handlers {
-        let DualOutput { stdout, stderr } = output_from_handler(handler);
-        output_stdout.add(stdout);
-        output_stderr.add(stderr);
-    }
-
-    DualOutput::new(output_stdout.into(), output_stderr.into())
 }
