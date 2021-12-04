@@ -8,20 +8,30 @@ use std::{
 };
 use crate::{flow, flow::CommandId, logging::{MultiplexedOutput, OutputStream, DualOutputStream, DualWriter}, common::Env, pprint, logging};
 use anyhow::{Context as AnyhowContext, Result};
-use crate::config::LoggingConfig;
+use crate::config::{ExecutionPolicy, LoggingConfig};
 use crate::logging::{LoggingSpec, PipeSpec};
 use colored::*;
 
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+pub enum ExecutionState {
+    Running,
+    Failed,
+}
 
 #[derive(Debug, Clone)]
 pub struct ExecutionResult {
     pub command_id: CommandId,
     pub exit_code: i32,
+    pub aborted: bool,
 }
 
 impl ExecutionResult {
     pub fn is_success(&self) -> bool {
         self.exit_code == 0
+    }
+
+    pub fn is_aborted(&self) -> bool {
+        self.aborted
     }
 }
 
@@ -29,6 +39,7 @@ impl ExecutionResult {
 pub struct ExecutionContext {
     pub env: Env,
     pub cwd: PathBuf,
+    pub state: ExecutionState,
     pub current: CommandId,
     pub previous: Option<ExecutionResult>,
 }
@@ -128,6 +139,7 @@ pub fn execute_command(
     Ok(ExecutionResult {
         command_id: context.current.clone(),
         exit_code,
+        aborted: false,
     })
 }
 
@@ -148,12 +160,32 @@ impl Executor {
     ) -> Result<ExecutionResult> {
         self.context.current = command_id.clone();
 
-        let spec = LoggingSpec::from_config(logging, &self.context)?;
-        let mut output = DualOutputStream::from_spec(spec);
+        let execute = match command.policy {
+            ExecutionPolicy::NoPriorFailed => self.context.state != ExecutionState::Failed,
+            ExecutionPolicy::Always => true
+        };
 
-        let result = execute_command(command, &mut self.context, &mut output)?;
+        let result = if execute {
+            let spec = LoggingSpec::from_config(logging, &self.context)?;
+            let mut output = DualOutputStream::from_spec(spec);
 
-        self.context.previous = Some(result.clone());
+            execute_command(command, &mut self.context, &mut output)?
+        } else {
+            ExecutionResult {
+                command_id: command_id.clone(),
+                exit_code: 0,
+                aborted: true,
+            }
+        };
+
+        // Only main command state is stored
+        if !command.is_hook {
+            if !result.is_success() && !result.is_aborted() {
+                self.context.state = ExecutionState::Failed;
+            }
+
+            self.context.previous = Some(result.clone());
+        }
         Ok(result)
     }
 }
@@ -161,7 +193,7 @@ impl Executor {
 pub fn execute_flow(
     flow: &flow::Flow,
     logging: &LoggingConfig,
-) -> Result<Vec<ExecutionResult>> {
+) -> Result<Vec<(CommandId, ExecutionResult)>> {
     let mut env: Env = std::env::vars().collect();
     env.extend(flow.env.clone());
 
@@ -170,12 +202,13 @@ pub fn execute_flow(
     let mut executor = Executor::new(ExecutionContext {
         env,
         cwd,
+        state: ExecutionState::Running,
         current: CommandId::new(),
         previous: None,
     });
 
-    let mut results = Vec::new();
 
+    let mut results = Vec::new();
     let mut flow_iter = flow.iter();
     while let Some((command_id, command)) = flow_iter.next() {
         if command.is_hook {
@@ -187,7 +220,10 @@ pub fn execute_flow(
 
         let result = executor.execute(&command_id, &command, logging)?;
         flow_iter.push_result(&command_id, &result);
-        results.push(result);
+
+        if !command.is_hook {
+            results.push((command_id.clone(), result));
+        }
     }
     Ok(results)
 }

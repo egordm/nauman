@@ -12,6 +12,7 @@ pub struct Task {
     pub env: Option<Env>,
     pub cwd: Option<String>,
     pub hooks: Option<Hooks>,
+    pub policy: Option<ExecutionPolicy>,
 }
 
 pub type Tasks = Vec<Task>;
@@ -79,6 +80,25 @@ impl Display for Hook {
     }
 }
 
+#[serde(rename_all = "snake_case")]
+#[derive(Debug, Copy, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
+pub enum ExecutionPolicy {
+    NoPriorFailed,
+    Always,
+}
+
+impl Default for ExecutionPolicy {
+    fn default() -> Self {
+        ExecutionPolicy::NoPriorFailed
+    }
+}
+
+impl Display for ExecutionPolicy {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", format!("{:?}", self).to_snake_case())
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Job {
     pub name: String,
@@ -87,5 +107,7 @@ pub struct Job {
     pub tasks: Tasks,
     pub hooks: HashMap<Hook, Tasks>,
     pub logging: LoggingConfig,
+    #[serde(default)]
+    pub policy: ExecutionPolicy,
 }
 

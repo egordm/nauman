@@ -7,6 +7,7 @@ use crate::{
     config,
     config::{Hook, LoggingConfig}
 };
+use crate::config::ExecutionPolicy;
 use crate::execution::ExecutionResult;
 
 pub type CommandId = String;
@@ -40,6 +41,7 @@ pub struct Command {
     pub cwd: Option<String>,
     pub is_hook: bool,
     pub hooks: Hooks,
+    pub policy: ExecutionPolicy,
 }
 
 #[derive(Debug)]
@@ -71,6 +73,7 @@ impl Flow {
 pub struct FlowBuilder {
     pub dependencies: Dependencies,
     pub routines: Routines,
+    pub policy: ExecutionPolicy,
 }
 
 impl FlowBuilder {
@@ -78,6 +81,7 @@ impl FlowBuilder {
         FlowBuilder {
             dependencies: HashMap::new(),
             routines: HashMap::new(),
+            policy: ExecutionPolicy::default(),
         }
     }
 
@@ -147,7 +151,8 @@ impl FlowBuilder {
             env: task.env.clone().unwrap_or(Env::default()),
             cwd: task.cwd.clone(),
             is_hook,
-            hooks
+            hooks,
+            policy: task.policy.unwrap_or(self.policy),
         })
     }
 
@@ -155,6 +160,7 @@ impl FlowBuilder {
         mut self,
         job: &config::Job,
     ) -> Result<Flow> {
+        self.policy = job.policy;
         let hooks = self.parse_hooks(&job.hooks, "", false)?;
         let main_routine = self.parse_routine(&job.tasks, "", false)?;
         self.routines.insert(MAIN_ROUTINE_NAME.to_string(), main_routine);
