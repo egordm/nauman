@@ -162,6 +162,7 @@ impl Executor {
 
         let execute = match command.policy {
             ExecutionPolicy::NoPriorFailed => self.context.state != ExecutionState::Failed,
+            ExecutionPolicy::PriorSuccess => self.context.previous.map(|r| r.is_success()).unwrap_or(true),
             ExecutionPolicy::Always => true
         };
 

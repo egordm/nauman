@@ -84,6 +84,7 @@ impl Display for Hook {
 #[derive(Debug, Copy, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
 pub enum ExecutionPolicy {
     NoPriorFailed,
+    PriorSuccess,
     Always,
 }
 
