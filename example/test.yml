@@ -31,17 +31,23 @@ tasks:
 
 
 hooks:
-  before:
+  before_job:
     - name: Before Scenario
       run: echo $(pwd)
-  after:
+  after_job:
     - name: After Scenario
       run: ls
+  on_error:
+    - name: On Error
+      run: echo $(pwd)
+  on_success:
+    - name: On Success
+      run: echo $(pwd)
   before_task:
     - name: Before Task
       run: echo $(pwd)
   after_task:
-    - name: Before Task
+    - name: After Task
       run: ls
 
 logging:

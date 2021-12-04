@@ -1,43 +1,21 @@
 use std::collections::HashMap;
-use crate::config;
 use anyhow::{anyhow, Result};
 use lazy_static::lazy_static;
 use regex::Regex;
-use crate::common::Env;
-use crate::config::LoggingConfig;
+use crate::{
+    common::Env,
+    config,
+    config::{Hook, LoggingConfig}
+};
 
 pub type CommandId = String;
+pub type RoutineId = String;
 pub type Dependencies = HashMap<CommandId, Command>;
+pub type Routines = HashMap<RoutineId, Routine>;
+pub type Hooks = HashMap<Hook, RoutineId>;
 
-#[derive(Debug)]
-pub struct Command {
-    pub name: String,
-    pub run: String,
-    pub env: Env,
-    pub cwd: Option<String>,
-}
 
-impl From<&config::Task> for Command {
-    fn from(t: &config::Task) -> Self {
-        Self {
-            name: t.name.clone(),
-            run: t.run.clone(),
-            env: t.env.clone().unwrap_or(Env::default()),
-            cwd: t.cwd.clone(),
-        }
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct Routine {
-    commands: Vec<CommandId>,
-}
-
-impl Default for Routine {
-    fn default() -> Self {
-        Self::new()
-    }
-}
+const MAIN_ROUTINE_NAME: &str = "main";
 
 lazy_static! {
     static ref IDENTIFIER_REGEX: Regex = Regex::new(r"[^a-zA-Z0-9_\-]").unwrap();
@@ -45,42 +23,79 @@ lazy_static! {
 
 fn format_identifier(text: &str) -> String {
     IDENTIFIER_REGEX.replace_all(
-        &text.to_lowercase().replace(" ", "-"),
-            ""
+        &text.to_lowercase().replace(" ", "-"), ""
     ).to_string()
 }
 
-fn generate_task_id(task: &config::Task, counter: usize, prefix: impl ToString) -> String {
-    format!("{}_{:03}_{}", prefix.to_string(), counter, format_identifier(&task.name))
+fn generate_id(name: &str, counter: usize, prefix: &str) -> String {
+    format!("{}{:03}_{}", prefix, counter, format_identifier(name))
 }
 
-impl Routine {
+#[derive(Debug, Clone)]
+pub struct Command {
+    pub name: String,
+    pub run: String,
+    pub env: Env,
+    pub cwd: Option<String>,
+    pub is_hook: bool,
+    pub hooks: Hooks,
+}
+
+#[derive(Debug)]
+pub struct Routine {
+    commands: Vec<CommandId>,
+    pub is_hook: bool,
+}
+
+#[derive(Debug)]
+pub struct Flow {
+    pub dependencies: Dependencies,
+    pub routines: Routines,
+    pub hooks: Hooks,
+    pub env: Env,
+    pub cwd: Option<String>,
+}
+
+impl Flow {
+    pub fn parse(job: &config::Job) -> Result<Self> {
+        FlowBuilder::new().parse_flow(job)
+    }
+
+    pub fn iter(&self) -> FlowIterator {
+        FlowIterator::new(self)
+    }
+}
+
+#[derive(Debug)]
+pub struct FlowBuilder {
+    pub dependencies: Dependencies,
+    pub routines: Routines,
+}
+
+impl FlowBuilder {
     pub fn new() -> Self {
-        Self {
-            commands: Vec::new(),
+        FlowBuilder {
+            dependencies: HashMap::new(),
+            routines: HashMap::new(),
         }
     }
 
-    pub fn new_singleton(command_id: CommandId) -> Self {
-        Self {
-            commands: vec![command_id],
-        }
-    }
-
-    pub fn from_task_list(
-        tasks: &[config::Task],
-        dependencies: &mut Dependencies,
-        prefix: impl ToString,
-    ) -> Result<Self> {
+    pub fn parse_routine(
+        &mut self,
+        tasks: &config::Tasks,
+        prefix: &str,
+        is_hook: bool,
+    ) -> Result<Routine> {
         let mut counter = 0;
         let mut commands = Vec::new();
 
         for task in tasks {
             let task_id = task.id.clone()
-                .unwrap_or_else(|| generate_task_id(task, counter, prefix.to_string()));
+                .unwrap_or_else(|| generate_id(&task.name, counter, prefix));
 
             // TODO: handle this in a more verbose way
-            if let Some(_old_commmand) = dependencies.insert(task_id.clone(), Command::from(task)) {
+            let command = self.parse_command(task, &task_id, is_hook)?;
+            if let Some(_) = self.dependencies.insert(task_id.clone(), command) {
                 return Err(anyhow!("Task {} has a duplicate id", task.name));
             }
 
@@ -88,80 +103,191 @@ impl Routine {
             counter += 1;
         }
 
-        Ok(Self { commands })
+        Ok(Routine { commands,  is_hook })
     }
 
-    pub fn chain(self, other: Self) -> Self {
-        Self {
-            commands: self.commands.into_iter()
-                .chain(other.commands.into_iter()).collect(),
+    pub fn parse_hooks(
+        &mut self,
+        hooks: &config::Hooks,
+        prefix: &str,
+        is_hook: bool,
+    ) -> Result<Hooks> {
+        if is_hook {
+            return Err(anyhow!("Hooks cannot be nested!"));
         }
+
+        let mut result = Hooks::new();
+
+        for (hook, tasks) in hooks {
+            let routine_id = format!("{}{}", prefix, &hook);
+            let routine = self.parse_routine(tasks, &routine_id, true)?;
+            self.routines.insert(routine_id.clone(), routine);
+            result.insert(hook.clone(), routine_id);
+        }
+
+        Ok(result)
     }
 
-    pub fn extend(&mut self, other: Self) {
-        self.commands.extend(other.commands.into_iter());
+    pub fn parse_command(
+        &mut self,
+        task: &config::Task,
+        prefix: &str,
+        is_hook: bool,
+    ) -> Result<Command> {
+        let hooks = if let Some(hooks) = &task.hooks {
+            self.parse_hooks(hooks, prefix, is_hook)?
+        } else {
+            HashMap::new()
+        };
+
+        Ok(Command {
+            name: task.name.clone(),
+            run: task.run.clone(),
+            env: task.env.clone().unwrap_or(Env::default()),
+            cwd: task.cwd.clone(),
+            is_hook,
+            hooks
+        })
     }
-}
 
-#[derive(Debug)]
-pub struct Flow {
-    pub dependencies: Dependencies,
-    pub flow: Routine,
-    pub env: Env,
-    pub cwd: Option<String>,
-    pub logging: LoggingConfig,
-}
+    pub fn parse_flow(
+        mut self,
+        job: &config::Job,
+    ) -> Result<Flow> {
+        let hooks = self.parse_hooks(&job.hooks, "", false)?;
+        let main_routine = self.parse_routine(&job.tasks, "", false)?;
+        self.routines.insert(MAIN_ROUTINE_NAME.to_string(), main_routine);
 
-const MAIN_ROUTINE_NAME: &str = "main";
-
-impl Flow {
-    pub fn from_job(
-        job: &config::Job
-    ) -> Result<Self> {
-        let mut dependencies = HashMap::new();
-        let mut flow = Routine::new();
-        let mut hooks: HashMap<config::Hook, Routine> = HashMap::new();
-
-        // Build hooks
-        for (hook, tasks) in job.hooks.iter() {
-            let routine = Routine::from_task_list(tasks, &mut dependencies, hook.to_string())?;
-            hooks.insert(hook.clone(), routine);
-        }
-
-        // Schedule before hook
-        if let Some(before_hook) = hooks.get(&config::Hook::Before) {
-            flow.extend(before_hook.clone());
-        }
-
-        // Build and schedule main tasks
-        let main_routine = Routine::from_task_list(&job.tasks, &mut dependencies, MAIN_ROUTINE_NAME)?;
-        let before_task = hooks.get(&config::Hook::BeforeTask).cloned().unwrap_or_default();
-        let after_task = hooks.get(&config::Hook::AfterTask).cloned().unwrap_or_default();
-        for command_id in main_routine.commands.into_iter() {
-            flow.extend(
-                before_task.clone()
-                    .chain(Routine::new_singleton(command_id))
-                    .chain(after_task.clone())
-            );
-        }
-
-        // Schedule after hook
-        if let Some(before_hook) = hooks.get(&config::Hook::After) {
-            flow.extend(before_hook.clone());
-        }
-
-        Ok(Self {
-            dependencies,
-            flow,
+        Ok(Flow {
+            dependencies: self.dependencies,
+            routines: self.routines,
             env: job.env.clone().unwrap_or_default(),
             cwd: job.cwd.clone(),
-            logging: job.logging.clone(),
+            hooks,
         })
     }
+}
 
-    pub fn iter(&self) -> impl Iterator<Item = (&CommandId, &Command)> {
-        self.flow.commands.iter().map(move |command_id| {
-            (command_id, self.dependencies.get(command_id).unwrap())
-        })
+
+#[derive(Debug, Clone)]
+pub struct StackItem {
+    pub routine: RoutineId,
+    pub position: i32,
+    pub scheduled: bool,
+    pub is_hook: bool,
+    pub length: i32,
+}
+
+pub struct FlowIterator<'a> {
+    flow: &'a Flow,
+    routine_stack: Vec<StackItem>,
+}
+
+impl <'a> FlowIterator<'a> {
+    pub fn new(flow: &'a Flow) -> Self {
+        let mut res = FlowIterator { flow, routine_stack: Vec::new() };
+        res.push(MAIN_ROUTINE_NAME.to_string()  );
+        res
+    }
+
+    fn head(&self) -> Option<StackItem> {
+        self.routine_stack.last().cloned()
+    }
+
+    fn head_ref(&self) -> Option<&StackItem> {
+        self.routine_stack.last()
+    }
+
+    fn head_mut(&mut self) -> Option<&mut StackItem> {
+        self.routine_stack.last_mut()
+    }
+
+    fn increment_position(&mut self) {
+        if let Some(item) = self.head_mut() {
+            item.position += 1;
+            item.scheduled = false;
+        }
+    }
+
+    fn set_scheduled(&mut self) {
+        if let Some(item) = self.head_mut() {
+            item.scheduled = true;
+        }
+    }
+
+    fn routine(&self, routine_id: &RoutineId) -> &Routine {
+        self.flow.routines.get(routine_id).expect("Routine not found")
+    }
+
+    fn command(&self, command_id: &CommandId) -> &Command {
+        self.flow.dependencies.get(command_id).expect("Command not found")
+    }
+
+    fn push(&mut self, routine_id: RoutineId) {
+        let routine = self.routine(&routine_id);
+
+        self.routine_stack.push(StackItem{
+            routine: routine_id,
+            position: -1,
+            scheduled: false,
+            is_hook: routine.is_hook,
+            length: routine.commands.len() as i32,
+        });
+    }
+
+    fn pop(&mut self) {
+        self.routine_stack.pop();
+    }
+
+}
+
+impl <'a> Iterator for FlowIterator<'a> {
+    type Item = (CommandId, Command);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        match self.head() {
+            // Empty Stack, we are done
+            None => None,
+            Some(item) if item.position == item.length => {
+                self.pop();
+                if !item.is_hook {
+                    if let Some(hook_id) = self.flow.hooks.get(&Hook::AfterJob) {
+                        self.push(hook_id.clone());
+                    }
+                }
+                self.next()
+            },
+            Some(item) if item.position == -1 => {
+                self.increment_position();
+                if !item.is_hook {
+                    if let Some(hook_id) = self.flow.hooks.get(&Hook::BeforeJob) {
+                        self.push(hook_id.clone());
+                    }
+                }
+                self.next()
+            }
+            Some(item) if !item.is_hook && !item.scheduled => {
+                self.set_scheduled();
+                if let Some(hook_id) = self.flow.hooks.get(&Hook::BeforeTask) {
+                    self.push(hook_id.clone());
+                }
+                self.next()
+            }
+            Some(item) => {
+                self.increment_position();
+                let routine = self.routine(&item.routine);
+                let command_id = routine.commands.get(item.position as usize).expect("Command not found");
+                let command = self.command(&command_id);
+                let result = (command_id.clone(), command.clone());
+
+                if !item.is_hook {
+                    if let Some(hook_id) = self.flow.hooks.get(&Hook::AfterTask) {
+                        self.push(hook_id.clone());
+                    }
+                }
+                Some(result)
+            }
+            _ => None
+        }
     }
 }

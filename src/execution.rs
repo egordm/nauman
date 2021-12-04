@@ -10,6 +10,7 @@ use crate::{flow, flow::CommandId, logging::{MultiplexedOutput, OutputStream, Du
 use anyhow::{Context as AnyhowContext, Result};
 use crate::config::LoggingConfig;
 use crate::logging::{LoggingSpec, PipeSpec};
+use colored::*;
 
 
 #[derive(Debug, Clone)]
@@ -153,6 +154,7 @@ impl Executor {
 
 pub fn execute_flow(
     flow: &flow::Flow,
+    logging: &LoggingConfig,
 ) -> Result<Vec<ExecutionResult>> {
     let mut env: Env = std::env::vars().collect();
     env.extend(flow.env.clone());
@@ -166,13 +168,16 @@ pub fn execute_flow(
         previous: None,
     });
 
-
     let mut results = Vec::new();
     for (command_id, command) in flow.iter() {
-        println!("{}", pprint::flex_banner(format!("Task {}", &command.name)));
+        if command.is_hook {
+            println!("{}", pprint::flex_banner(format!("Task {}", &command.name)).yellow());
+        } else {
+            println!("{}", pprint::flex_banner(format!("Task {}", &command.name)).green());
+        }
         println!("{}", pprint::command(&command.run));
 
-        let result = executor.execute(command_id, command, &flow.logging)?;
+        let result = executor.execute(&command_id, &command, logging)?;
         results.push(result);
     }
 

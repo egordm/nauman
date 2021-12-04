@@ -15,7 +15,8 @@ fn main() {
         .expect("Something went wrong reading the file");
 
     let job: config::Job = serde_yaml::from_str(&contents).unwrap();
-    let flow = flow::Flow::from_job(&job).unwrap();
+    let logging = job.logging.clone();
+    let flow = flow::Flow::parse(&job).unwrap();
 
-    execute_flow(&flow).unwrap();
+    execute_flow(&flow, &logging).unwrap();
 }

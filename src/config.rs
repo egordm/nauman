@@ -1,4 +1,6 @@
 use std::collections::HashMap;
+use std::fmt::{Display, Formatter};
+use heck::SnakeCase;
 use serde::{Serialize, Deserialize};
 use crate::common::Env;
 
@@ -9,9 +11,11 @@ pub struct Task {
     pub run: String,
     pub env: Option<Env>,
     pub cwd: Option<String>,
+    pub hooks: Option<Hooks>,
 }
 
 pub type Tasks = Vec<Task>;
+pub type Hooks = HashMap<Hook, Tasks>;
 
 fn true_default() -> bool {
     true
@@ -61,15 +65,17 @@ pub struct LoggingConfig {
 #[serde(rename_all = "snake_case")]
 #[derive(Debug, Copy, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
 pub enum Hook {
-    Before,
-    After,
+    BeforeJob,
+    AfterJob,
     BeforeTask,
-    AfterTask
+    AfterTask,
+    OnError,
+    OnSuccess,
 }
 
-impl ToString for Hook {
-    fn to_string(&self) -> String {
-        format!("{:?}", self)
+impl Display for Hook {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", format!("{:?}", self).to_snake_case())
     }
 }
 
