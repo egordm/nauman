@@ -6,11 +6,12 @@ use std::{
     process::Stdio,
     os::unix::io::{AsRawFd, FromRawFd},
 };
-use crate::{flow, flow::CommandId, logging::{MultiplexedOutput, OutputStream, DualOutputStream, DualWriter}, common::Env, pprint, logging};
+use crate::{flow, flow::CommandId, logging::{MultiplexedOutput, OutputStream, DualOutputStream, DualWriter}, common::Env, pprint, logging, Logger};
 use anyhow::{Context as AnyhowContext, Result};
-use crate::config::{ExecutionPolicy, LoggingConfig};
+use crate::config::{ExecutionPolicy, LoggingConfig, Shell, TaskHandler};
 use crate::logging::{LoggingSpec, PipeSpec};
 use colored::*;
+use crate::flow::Command;
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub enum ExecutionState {
@@ -110,38 +111,72 @@ pub fn capture_command(
     Ok(())
 }
 
+pub trait ExecutableHandler {
+    fn execute(
+        &self,
+        command: &flow::Command,
+        context: &mut ExecutionContext,
+        logger: &mut Logger,
+    ) -> Result<ExecutionResult>;
+}
+
+impl ExecutableHandler for Shell {
+    fn execute(
+        &self,
+        command: &flow::Command,
+        context: &mut ExecutionContext,
+        logger: &mut Logger,
+    ) -> Result<ExecutionResult> {
+        // Announce execution
+        println!("{}", pprint::command(&self.run));
+
+        // Build env
+        let mut env = context.env.clone();
+        env.extend(command.env.clone());
+
+        // Build cwd
+        let cwd = resolve_cwd(&context.cwd, command.cwd.as_ref());
+
+        // Build command
+        let mut child = std::process::Command::new("sh")
+            .args(&["-c", &self.run])
+            .envs(env)
+            .current_dir(cwd)
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .with_context(|| format!("Failed to execute command: {}", self.run))?;
+
+        // Execute command, capture its output and return its exit code
+        capture_command(&child, logger.mut_output())?;
+        let exit_code = child.wait()?.code().unwrap_or(-1);
+
+        Ok(ExecutionResult {
+            command_id: context.current.clone(),
+            exit_code,
+            aborted: false,
+        })
+    }
+}
+
+impl ExecutableHandler for TaskHandler {
+    fn execute(&self, command: &Command, context: &mut ExecutionContext, logger: &mut Logger) -> Result<ExecutionResult> {
+        match self {
+            TaskHandler::Shell(handler) => handler.execute(command, context, logger),
+        }
+    }
+}
+
 pub fn execute_command(
     command: &flow::Command,
     context: &mut ExecutionContext,
-    output: &mut DualOutputStream,
+    logger: &mut Logger,
 ) -> Result<ExecutionResult> {
-    // Build env
-    let mut env = context.env.clone();
-    env.extend(command.env.clone());
-
-    // Build cwd
-    let cwd = resolve_cwd(&context.cwd, command.cwd.as_ref());
-
-    // Build command
-    let mut child = std::process::Command::new("sh")
-        .args(&["-c", &command.run])
-        .envs(env)
-        .current_dir(cwd)
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .with_context(|| format!("Failed to execute command: {}", command.run))?;
-
-    // Execute command, capture its output and return its exit code
-    capture_command(&child, output)?;
-    let exit_code = child.wait()?.code().unwrap_or(-1);
-
-    Ok(ExecutionResult {
-        command_id: context.current.clone(),
-        exit_code,
-        aborted: false,
-    })
+    command.handler.execute(command, context, logger)
 }
+
+pub const ENV_PREV_CODE: &str = "NAUMAN_PREV_CODE";
+pub const ENV_PREV_ID: &str = "NAUMAN_PREV_ID";
 
 pub struct Executor {
     pub context: ExecutionContext,
@@ -156,21 +191,26 @@ impl Executor {
         &mut self,
         command_id: &CommandId,
         command: &flow::Command,
-        logging: &LoggingConfig,
+        logger: &mut Logger,
     ) -> Result<ExecutionResult> {
         self.context.current = command_id.clone();
 
         let execute = match command.policy {
             ExecutionPolicy::NoPriorFailed => self.context.state != ExecutionState::Failed,
-            ExecutionPolicy::PriorSuccess => self.context.previous.map(|r| r.is_success()).unwrap_or(true),
+            ExecutionPolicy::PriorSuccess => self.context.previous.as_ref().map(|r| r.is_success()).unwrap_or(true),
             ExecutionPolicy::Always => true
         };
 
         let result = if execute {
-            let spec = LoggingSpec::from_config(logging, &self.context)?;
-            let mut output = DualOutputStream::from_spec(spec);
+            logger.switch(command, &self.context);
 
-            execute_command(command, &mut self.context, &mut output)?
+            // Prepare context
+            if let Some(previous) = self.context.previous.as_ref() {
+                self.context.env.insert(ENV_PREV_CODE.to_string(), previous.exit_code.to_string());
+                self.context.env.insert(ENV_PREV_ID.to_string(), previous.command_id.to_string());
+            }
+
+            execute_command(command, &mut self.context, logger)?
         } else {
             ExecutionResult {
                 command_id: command_id.clone(),
@@ -193,7 +233,7 @@ impl Executor {
 
 pub fn execute_flow(
     flow: &flow::Flow,
-    logging: &LoggingConfig,
+    logger: &mut Logger,
 ) -> Result<Vec<(CommandId, ExecutionResult)>> {
     let mut env: Env = std::env::vars().collect();
     env.extend(flow.env.clone());
@@ -217,9 +257,8 @@ pub fn execute_flow(
         } else {
             println!("{}", pprint::flex_banner(format!("Task: {}", &command.name)).green());
         }
-        println!("{}", pprint::command(&command.run));
 
-        let result = executor.execute(&command_id, &command, logging)?;
+        let result = executor.execute(&command_id, &command, logger)?;
         flow_iter.push_result(&command_id, &result);
 
         if !command.is_hook {

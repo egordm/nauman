@@ -4,11 +4,40 @@ use heck::SnakeCase;
 use serde::{Serialize, Deserialize};
 use crate::common::Env;
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Options {
+    shell: Option<String>,
+    #[serde(default = "false_default")]
+    dry_run: bool,
+}
+
+impl Default for Options {
+    fn default() -> Self {
+        Self {
+            shell: None,
+            dry_run: false,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Shell {
+    pub shell: Option<String>,
+    pub run: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum TaskHandler {
+    Shell(Shell),
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Task {
     pub id: Option<String>,
     pub name: String,
-    pub run: String,
+    #[serde(flatten)]
+    pub handler: TaskHandler,
     pub env: Option<Env>,
     pub cwd: Option<String>,
     pub hooks: Option<Hooks>,
@@ -110,5 +139,6 @@ pub struct Job {
     pub logging: LoggingConfig,
     #[serde(default)]
     pub policy: ExecutionPolicy,
+    pub options: Option<Options>,
 }
 

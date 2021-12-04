@@ -7,7 +7,7 @@ use crate::{
     config,
     config::{Hook, LoggingConfig}
 };
-use crate::config::ExecutionPolicy;
+use crate::config::{ExecutionPolicy, TaskHandler};
 use crate::execution::ExecutionResult;
 
 pub type CommandId = String;
@@ -36,7 +36,7 @@ fn generate_id(name: &str, counter: usize, prefix: &str) -> String {
 #[derive(Debug, Clone)]
 pub struct Command {
     pub name: String,
-    pub run: String,
+    pub handler: TaskHandler,
     pub env: Env,
     pub cwd: Option<String>,
     pub is_hook: bool,
@@ -147,7 +147,7 @@ impl FlowBuilder {
 
         Ok(Command {
             name: task.name.clone(),
-            run: task.run.clone(),
+            handler: task.handler.clone(),
             env: task.env.clone().unwrap_or(Env::default()),
             cwd: task.cwd.clone(),
             is_hook,

@@ -39,10 +39,10 @@ hooks:
       run: ls
   on_failure:
     - name: On Error
-      run: echo $(pwd)
+      run: echo "Task $NAUMAN_PREV_ID failed with code $NAUMAN_PREV_CODE"
   on_success:
     - name: On Success
-      run: echo $(pwd)
+      run: echo "Task $NAUMAN_PREV_ID succeeded with code $NAUMAN_PREV_CODE"
   before_task:
     - name: Before Task
       run: echo $(pwd)
