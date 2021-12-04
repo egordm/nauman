@@ -45,5 +45,16 @@ hooks:
       run: ls
 
 logging:
-  - type: file
-    split: true
+  handlers:
+    - type: file
+      stdout: true
+      stderr: true
+      output: ./example/logs/full.log
+    - type: file
+      stdout: true
+      stderr: false
+      split: true
+      output: ./example/logs/separate
+    - type: console
+      stdout: true
+      stderr: true

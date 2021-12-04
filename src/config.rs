@@ -13,16 +13,52 @@ pub struct Task {
 
 pub type Tasks = Vec<Task>;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct FileLogger {
-    suffix: Option<String>,
+fn true_default() -> bool {
+    true
+}
+
+fn false_default() -> bool {
+    false
+}
+
+fn output_default() -> String {
+    "output.log".to_string()
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct LogOptions {
+    #[serde(default = "true_default")]
+    stdout: bool,
+    #[serde(default = "true_default")]
+    stderr: bool,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct FileHandler {
+    #[serde(default = "output_default")]
+    output: String,
+    #[serde(default = "false_default")]
     split: bool,
 }
 
 #[serde(rename_all = "snake_case", tag = "type")]
 #[derive(Debug, Serialize, Deserialize)]
-pub enum Loggers {
-    File(FileLogger)
+pub enum LogHandlerType {
+    File(FileHandler),
+    Console,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct LogHandler {
+    #[serde(flatten)]
+    pub handler: LogHandlerType,
+    #[serde(flatten)]
+    pub options: LogOptions,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct LoggingOptions {
+    handlers: Vec<LogHandler>,
 }
 
 #[serde(rename_all = "snake_case")]
@@ -47,6 +83,6 @@ pub struct Job {
     pub cwd: Option<String>,
     pub tasks: Tasks,
     pub hooks: HashMap<Hook, Tasks>,
-    pub logging: Vec<Loggers>,
+    pub logging: LoggingOptions,
 }
 
