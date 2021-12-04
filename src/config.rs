@@ -21,10 +21,6 @@ fn false_default() -> bool {
     false
 }
 
-fn output_default() -> String {
-    "output.log".to_string()
-}
-
 #[derive(Debug, Serialize, Deserialize)]
 pub struct LogOptions {
     #[serde(default = "true_default")]
@@ -35,8 +31,7 @@ pub struct LogOptions {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct FileHandler {
-    #[serde(default = "output_default")]
-    output: String,
+    output: Option<String>,
     #[serde(default = "false_default")]
     split: bool,
 }

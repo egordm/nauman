@@ -3,6 +3,7 @@ use std::{
     io::{self, BufWriter, Write},
     sync::{Mutex},
 };
+use std::ops::Index;
 
 pub struct Stdout {
     pub stream: io::Stdout,
@@ -141,6 +142,12 @@ pub struct MultiplexedOutput {
     outputs: Vec<Output>,
 }
 
+impl Into<Output> for MultiplexedOutput {
+    fn into(self) -> Output {
+        Output::new_writer(Box::new(self))
+    }
+}
+
 impl MultiplexedOutput {
     pub fn new() -> Self {
         MultiplexedOutput { outputs: Vec::new() }
@@ -164,5 +171,42 @@ impl std::io::Write for MultiplexedOutput {
             output.flush()?;
         }
         Ok(())
+    }
+}
+
+pub trait DualWriter {
+    fn write_stdout(&mut self, buf: &[u8]) -> io::Result<usize>;
+    fn write_stderr(&mut self, buf: &[u8]) -> io::Result<usize>;
+
+    fn flush_stdout(&mut self) -> io::Result<()>;
+    fn flush_stderr(&mut self) -> io::Result<()>;
+}
+
+pub struct DualOutput {
+    pub stdout: Output,
+    pub stderr: Output,
+}
+
+impl DualOutput {
+    pub fn new(stdout: Output, stderr: Output) -> Self {
+        DualOutput { stdout, stderr }
+    }
+}
+
+impl DualWriter for DualOutput {
+    fn write_stdout(&mut self, buf: &[u8]) -> io::Result<usize> {
+        self.stdout.write(buf)
+    }
+
+    fn write_stderr(&mut self, buf: &[u8]) -> io::Result<usize> {
+        self.stdout.write(buf)
+    }
+
+    fn flush_stdout(&mut self) -> io::Result<()> {
+        self.stdout.flush()
+    }
+
+    fn flush_stderr(&mut self) -> io::Result<()> {
+        self.stderr.flush()
     }
 }

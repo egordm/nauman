@@ -4,10 +4,11 @@ use std::{
     io::{BufReader, Read, Write},
     path::{PathBuf},
     process::Stdio,
-    os::unix::io::{AsRawFd, FromRawFd}
+    os::unix::io::{AsRawFd, FromRawFd},
 };
 use crate::{flow, flow::CommandId, output::{MultiplexedOutput, Output}, common::Env, pprint};
 use anyhow::{Context as AnyhowContext, Result};
+use crate::output::{DualOutput, DualWriter};
 
 
 #[derive(Debug, Clone)]
@@ -24,6 +25,15 @@ pub struct Context {
     pub previous: Option<ExecutionResult>,
 }
 
+pub fn resolve_cwd(current: PathBuf, cwd: Option<&String>) -> PathBuf {
+    let cwd = cwd.map(PathBuf::from).unwrap_or_else(|| current.clone());
+    if cwd.is_absolute() {
+        cwd
+    } else {
+        current.join(cwd)
+    }
+}
+
 fn read_buffer(source: &mut BufReader<File>, buffer: &mut [u8]) -> io::Result<Option<usize>> {
     match source.read(buffer) {
         Ok(count) => Ok(Some(count)),
@@ -34,34 +44,35 @@ fn read_buffer(source: &mut BufReader<File>, buffer: &mut [u8]) -> io::Result<Op
     }
 }
 
-pub fn resolve_cwd(current: PathBuf, cwd: Option<&String>) -> PathBuf {
-    let cwd = cwd.map(PathBuf::from).unwrap_or_else(|| current.clone());
-    if cwd.is_absolute() {
-        cwd
-    } else {
-        current.join(cwd)
-    }
-}
-
 const BUFFER_SIZE: usize = 1024; // 1 KB
 
 pub fn capture_command(
     child: &std::process::Child,
-    output: &mut MultiplexedOutput,
+    output: &mut DualOutput,
 ) -> Result<()> {
     let mut buffer = [0; BUFFER_SIZE];
-    let mut source = BufReader::new(unsafe {
-        File::from_raw_fd(
-            child.stdout.as_ref().unwrap().as_raw_fd()
-        )
+    let mut stdout = BufReader::new(unsafe {
+        File::from_raw_fd(child.stdout.as_ref().unwrap().as_raw_fd())
+    });
+    let mut stderr = BufReader::new(unsafe {
+        File::from_raw_fd(child.stderr.as_ref().unwrap().as_raw_fd())
     });
 
     loop {
-        match read_buffer(&mut source, &mut buffer) {
+        match read_buffer(&mut stdout, &mut buffer) {
             Ok(None) => break,
             Ok(Some(size)) if size == 0 => break,
             Ok(Some(size)) => {
-                output.write(&buffer[0..size]).unwrap();
+                output.write_stdout(&buffer[0..size]).unwrap();
+            }
+            Err(e) => return Err(e.into()),
+        }
+
+        match read_buffer(&mut stderr, &mut buffer) {
+            Ok(None) => break,
+            Ok(Some(size)) if size == 0 => break,
+            Ok(Some(size)) => {
+                output.write_stderr(&buffer[0..size]).unwrap();
             }
             Err(e) => return Err(e.into()),
         }
@@ -73,7 +84,7 @@ pub fn capture_command(
 pub fn execute_command(
     command: &flow::Command,
     context: &mut Context,
-    output: &mut MultiplexedOutput,
+    output: &mut DualOutput,
 ) -> Result<ExecutionResult> {
     // Build env
     let mut env = context.env.clone();
@@ -115,7 +126,7 @@ impl Executor {
         &mut self,
         command_id: &CommandId,
         command: &flow::Command,
-        output: &mut MultiplexedOutput,
+        output: &mut DualOutput,
     ) -> Result<ExecutionResult> {
         self.context.current = command_id.clone();
         let result = execute_command(command, &mut self.context, output)?;
@@ -139,9 +150,15 @@ pub fn execute_flow(
         previous: None,
     });
 
-    let mut output = MultiplexedOutput::new();
-    output.add(Output::new_stdout());
-    output.add(Output::new_file("stdout.log"));
+    let mut stdout = MultiplexedOutput::new();
+    stdout.add(Output::new_stdout());
+    stdout.add(Output::new_file("stdout.log"));
+
+    let mut stderr = MultiplexedOutput::new();
+    stderr.add(Output::new_stderr());
+    stderr.add(Output::new_file("stderr.log"));
+
+    let mut output = DualOutput::new(stdout.into(), stderr.into());
 
     let mut results = Vec::new();
     for (command_id, command) in flow.iter() {
