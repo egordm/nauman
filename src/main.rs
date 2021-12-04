@@ -10,6 +10,7 @@ mod config;
 mod output;
 mod flow;
 mod execution;
+mod pprint;
 
 fn main() {
     let contents = fs::read_to_string("example/test.yml")

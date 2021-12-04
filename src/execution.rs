@@ -6,13 +6,7 @@ use std::{
     process::Stdio,
     os::unix::io::{AsRawFd, FromRawFd, IntoRawFd}
 };
-use crate::{
-    config,
-    flow,
-    flow::CommandId,
-    output::{MultiplexedOutput, Output},
-    common::Env
-};
+use crate::{config, flow, flow::CommandId, output::{MultiplexedOutput, Output}, common::Env, pprint};
 use anyhow::{anyhow, Context as AnyhowContext, Result};
 
 
@@ -151,6 +145,9 @@ pub fn execute_flow(
 
     let mut results = Vec::new();
     for (command_id, command) in flow.iter() {
+        println!("{}", pprint::flex_banner(format!("Task {}", &command.name)));
+        println!("{}", pprint::command(&command.run));
+
         let result = executor.execute(command_id, command, &mut output)?;
         results.push(result);
     }

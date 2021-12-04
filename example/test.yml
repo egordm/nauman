@@ -13,10 +13,10 @@ tasks:
   - name: Download Rockstar Readme
     run: |
       curl -s https://raw.githubusercontent.com/RockstarLang/rockstar/main/README.md > README.md
-      cat README.md
+      head README.md
     cwd: tmp
-  - name: Show last 10 commits
-    run: git log -n 10
+  - name: Show last 3 commits
+    run: git log -n 3
     cwd: tmp/rockstar
   - name: Setup satriani compiler
     run: |
