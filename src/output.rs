@@ -4,6 +4,8 @@ use std::{
     sync::{Mutex},
 };
 use std::ops::Index;
+use std::path::Path;
+use crate::config::{LoggingConfig, LogHandler, LogHandlerType};
 
 pub struct Stdout {
     pub stream: io::Stdout,
@@ -94,12 +96,12 @@ impl Output {
         })
     }
 
-    pub fn new_file(path: &str) -> Self {
+    pub fn new_file(path: impl AsRef<Path>) -> Self {
         let file = fs::OpenOptions::new()
             .create(true)
             .append(true)
             .open(path)
-            .unwrap();
+            .unwrap(); // TODO: handle error
         Output::File(File {
             stream: Mutex::new(BufWriter::new(file)),
         })
@@ -209,4 +211,43 @@ impl DualWriter for DualOutput {
     fn flush_stderr(&mut self) -> io::Result<()> {
         self.stderr.flush()
     }
+}
+
+pub fn output_from_handler(handler: &LogHandler) -> DualOutput {
+    let stdout = if handler.options.stdout {
+        match &handler.handler {
+            LogHandlerType::File(f) => Output::new_file(
+                f.output.clone().unwrap_or("stdout.log".to_string())
+            ),
+            LogHandlerType::Console => Output::new_stdout(),
+        }
+    } else {
+        Output::new_null()
+    };
+
+    let stderr = if handler.options.stderr {
+        match &handler.handler {
+            LogHandlerType::File(f) => Output::new_file(
+                f.output.clone().unwrap_or("stderr.log".to_string())
+            ),
+            LogHandlerType::Console => Output::new_stderr(),
+        }
+    } else {
+        Output::new_null()
+    };
+
+    DualOutput::new(stdout, stderr)
+}
+
+pub fn from_config(config: &LoggingConfig) -> DualOutput {
+    let mut output_stdout = MultiplexedOutput::new();
+    let mut output_stderr = MultiplexedOutput::new();
+
+    for handler in &config.handlers {
+        let DualOutput { stdout, stderr } = output_from_handler(handler);
+        output_stdout.add(stdout);
+        output_stderr.add(stderr);
+    }
+
+    DualOutput::new(output_stdout.into(), output_stderr.into())
 }

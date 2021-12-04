@@ -6,7 +6,7 @@ use std::{
     process::Stdio,
     os::unix::io::{AsRawFd, FromRawFd},
 };
-use crate::{flow, flow::CommandId, output::{MultiplexedOutput, Output}, common::Env, pprint};
+use crate::{flow, flow::CommandId, output::{MultiplexedOutput, Output}, common::Env, pprint, output};
 use anyhow::{Context as AnyhowContext, Result};
 use crate::output::{DualOutput, DualWriter};
 
@@ -50,7 +50,9 @@ pub fn capture_command(
     child: &std::process::Child,
     output: &mut DualOutput,
 ) -> Result<()> {
+    // TODO: split into two functions
     let mut buffer = [0; BUFFER_SIZE];
+    let (mut stdout_done, mut stderr_done) = (false, false);
     let mut stdout = BufReader::new(unsafe {
         File::from_raw_fd(child.stdout.as_ref().unwrap().as_raw_fd())
     });
@@ -59,22 +61,34 @@ pub fn capture_command(
     });
 
     loop {
-        match read_buffer(&mut stdout, &mut buffer) {
-            Ok(None) => break,
-            Ok(Some(size)) if size == 0 => break,
-            Ok(Some(size)) => {
-                output.write_stdout(&buffer[0..size]).unwrap();
+        if !stdout_done {
+            match read_buffer(&mut stdout, &mut buffer) {
+                Ok(None) => break,
+                Ok(Some(size)) if size == 0 => {
+                    stdout_done = true;
+                },
+                Ok(Some(size)) => {
+                    output.write_stdout(&buffer[0..size]).unwrap();
+                }
+                Err(e) => return Err(e.into()),
             }
-            Err(e) => return Err(e.into()),
         }
 
-        match read_buffer(&mut stderr, &mut buffer) {
-            Ok(None) => break,
-            Ok(Some(size)) if size == 0 => break,
-            Ok(Some(size)) => {
-                output.write_stderr(&buffer[0..size]).unwrap();
+        if !stderr_done {
+            match read_buffer(&mut stderr, &mut buffer) {
+                Ok(None) => break,
+                Ok(Some(size)) if size == 0 => {
+                    stderr_done = true;
+                },
+                Ok(Some(size)) => {
+                    output.write_stderr(&buffer[0..size]).unwrap();
+                }
+                Err(e) => return Err(e.into()),
             }
-            Err(e) => return Err(e.into()),
+        }
+
+        if stderr_done && stdout_done {
+            break;
         }
     }
 
@@ -150,15 +164,7 @@ pub fn execute_flow(
         previous: None,
     });
 
-    let mut stdout = MultiplexedOutput::new();
-    stdout.add(Output::new_stdout());
-    stdout.add(Output::new_file("stdout.log"));
-
-    let mut stderr = MultiplexedOutput::new();
-    stderr.add(Output::new_stderr());
-    stderr.add(Output::new_file("stderr.log"));
-
-    let mut output = DualOutput::new(stdout.into(), stderr.into());
+    let mut output = output::from_config(&flow.logging);
 
     let mut results = Vec::new();
     for (command_id, command) in flow.iter() {

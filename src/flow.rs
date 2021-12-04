@@ -4,6 +4,7 @@ use anyhow::{anyhow, Result};
 use lazy_static::lazy_static;
 use regex::Regex;
 use crate::common::Env;
+use crate::config::LoggingConfig;
 
 pub type CommandId = String;
 pub type Dependencies = HashMap<CommandId, Command>;
@@ -108,6 +109,7 @@ pub struct Flow {
     pub flow: Routine,
     pub env: Env,
     pub cwd: Option<String>,
+    pub logging: LoggingConfig,
 }
 
 const MAIN_ROUTINE_NAME: &str = "main";
@@ -153,6 +155,7 @@ impl Flow {
             flow,
             env: job.env.clone().unwrap_or_default(),
             cwd: job.cwd.clone(),
+            logging: job.logging.clone(),
         })
     }
 

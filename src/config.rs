@@ -21,29 +21,29 @@ fn false_default() -> bool {
     false
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LogOptions {
     #[serde(default = "true_default")]
-    stdout: bool,
+    pub stdout: bool,
     #[serde(default = "true_default")]
-    stderr: bool,
+    pub stderr: bool,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FileHandler {
-    output: Option<String>,
+    pub output: Option<String>,
     #[serde(default = "false_default")]
-    split: bool,
+    pub split: bool,
 }
 
 #[serde(rename_all = "snake_case", tag = "type")]
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum LogHandlerType {
     File(FileHandler),
     Console,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LogHandler {
     #[serde(flatten)]
     pub handler: LogHandlerType,
@@ -51,9 +51,11 @@ pub struct LogHandler {
     pub options: LogOptions,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
-pub struct LoggingOptions {
-    handlers: Vec<LogHandler>,
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LoggingConfig {
+    #[serde(default = "true_default")]
+    pub ansi: bool,
+    pub handlers: Vec<LogHandler>,
 }
 
 #[serde(rename_all = "snake_case")]
@@ -78,6 +80,6 @@ pub struct Job {
     pub cwd: Option<String>,
     pub tasks: Tasks,
     pub hooks: HashMap<Hook, Tasks>,
-    pub logging: LoggingOptions,
+    pub logging: LoggingConfig,
 }
 
