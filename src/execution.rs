@@ -8,7 +8,8 @@ use std::{
 };
 use crate::{flow, flow::CommandId, logging::{MultiplexedOutput, OutputStream, DualOutputStream, DualWriter}, common::Env, pprint, logging};
 use anyhow::{Context as AnyhowContext, Result};
-use crate::logging::PipeSpec;
+use crate::config::LoggingConfig;
+use crate::logging::{LoggingSpec, PipeSpec};
 
 
 #[derive(Debug, Clone)]
@@ -18,14 +19,14 @@ pub struct ExecutionResult {
 }
 
 #[derive(Debug, Clone)]
-pub struct Context {
+pub struct ExecutionContext {
     pub env: Env,
     pub cwd: PathBuf,
     pub current: CommandId,
     pub previous: Option<ExecutionResult>,
 }
 
-pub fn resolve_cwd(current: PathBuf, cwd: Option<&String>) -> PathBuf {
+pub fn resolve_cwd(current: &PathBuf, cwd: Option<&String>) -> PathBuf {
     let cwd = cwd.map(PathBuf::from).unwrap_or_else(|| current.clone());
     if cwd.is_absolute() {
         cwd
@@ -61,30 +62,26 @@ pub fn capture_command(
     });
 
     loop {
-        if !stdout_done {
-            match read_buffer(&mut stdout, &mut buffer) {
-                Ok(None) => break,
-                Ok(Some(size)) if size == 0 => {
-                    stdout_done = true;
-                },
-                Ok(Some(size)) => {
-                    output.write_stdout(&buffer[0..size]).unwrap();
-                }
-                Err(e) => return Err(e.into()),
+        match read_buffer(&mut stdout, &mut buffer) {
+            Ok(None) => break,
+            Ok(Some(size)) if size == 0 => {
+                stdout_done = true;
             }
+            Ok(Some(size)) => {
+                output.write_stdout(&buffer[0..size]).unwrap();
+            }
+            Err(e) => return Err(e.into()),
         }
 
-        if !stderr_done {
-            match read_buffer(&mut stderr, &mut buffer) {
-                Ok(None) => break,
-                Ok(Some(size)) if size == 0 => {
-                    stderr_done = true;
-                },
-                Ok(Some(size)) => {
-                    output.write_stderr(&buffer[0..size]).unwrap();
-                }
-                Err(e) => return Err(e.into()),
+        match read_buffer(&mut stderr, &mut buffer) {
+            Ok(None) => break,
+            Ok(Some(size)) if size == 0 => {
+                stderr_done = true;
             }
+            Ok(Some(size)) => {
+                output.write_stderr(&buffer[0..size]).unwrap();
+            }
+            Err(e) => return Err(e.into()),
         }
 
         if stderr_done && stdout_done {
@@ -97,7 +94,7 @@ pub fn capture_command(
 
 pub fn execute_command(
     command: &flow::Command,
-    context: &mut Context,
+    context: &mut ExecutionContext,
     output: &mut DualOutputStream,
 ) -> Result<ExecutionResult> {
     // Build env
@@ -105,7 +102,7 @@ pub fn execute_command(
     env.extend(command.env.clone());
 
     // Build cwd
-    let cwd = resolve_cwd(context.cwd.clone(), command.cwd.as_ref());
+    let cwd = resolve_cwd(&context.cwd, command.cwd.as_ref());
 
     // Build command
     let mut child = std::process::Command::new("sh")
@@ -128,11 +125,11 @@ pub fn execute_command(
 }
 
 pub struct Executor {
-    pub context: Context,
+    pub context: ExecutionContext,
 }
 
 impl Executor {
-    pub fn new(context: Context) -> Self {
+    pub fn new(context: ExecutionContext) -> Self {
         Executor { context }
     }
 
@@ -140,10 +137,15 @@ impl Executor {
         &mut self,
         command_id: &CommandId,
         command: &flow::Command,
-        output: &mut DualOutputStream,
+        logging: &LoggingConfig,
     ) -> Result<ExecutionResult> {
         self.context.current = command_id.clone();
-        let result = execute_command(command, &mut self.context, output)?;
+
+        let spec = LoggingSpec::from_config(logging, &self.context)?;
+        let mut output = DualOutputStream::from_spec(spec);
+
+        let result = execute_command(command, &mut self.context, &mut output)?;
+
         self.context.previous = Some(result.clone());
         Ok(result)
     }
@@ -155,9 +157,9 @@ pub fn execute_flow(
     let mut env: Env = std::env::vars().collect();
     env.extend(flow.env.clone());
 
-    let cwd = resolve_cwd(std::env::current_dir()?, flow.cwd.as_ref());
+    let cwd = resolve_cwd(&std::env::current_dir()?, flow.cwd.as_ref());
 
-    let mut executor = Executor::new(Context {
+    let mut executor = Executor::new(ExecutionContext {
         env,
         cwd,
         current: CommandId::new(),
@@ -165,16 +167,12 @@ pub fn execute_flow(
     });
 
 
-    let mut output = DualOutputStream::from_spec(
-        PipeSpec::from_config(&flow.logging)
-    );
-
     let mut results = Vec::new();
     for (command_id, command) in flow.iter() {
         println!("{}", pprint::flex_banner(format!("Task {}", &command.name)));
         println!("{}", pprint::command(&command.run));
 
-        let result = executor.execute(command_id, command, &mut output)?;
+        let result = executor.execute(command_id, command, &flow.logging)?;
         results.push(result);
     }
 

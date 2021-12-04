@@ -5,8 +5,10 @@ use std::{
     ops::Index,
     path::Path,
 };
+use std::cell::RefCell;
+use std::rc::Rc;
 use crate::config::{LoggingConfig, LogHandler, LogHandlerType};
-use crate::logging::{InputStream, OutputStreamSpec, PipeSpec};
+use crate::logging::{InputStream, LoggingSpec, OutputStreamSpec, PipeSpec};
 
 pub struct Stdout {
     pub stream: io::Stdout,
@@ -22,6 +24,23 @@ pub struct File {
 
 pub struct Writer {
     pub stream: Mutex<Box<dyn Write + Send>>,
+}
+
+pub struct SharedWriter {
+    pub stream: Rc<RefCell<dyn Write + Send>>,
+}
+
+impl SharedWriter {
+    pub fn split(self) -> (Self, Self) {
+        (
+            SharedWriter {
+                stream: self.stream.clone(),
+            },
+            SharedWriter {
+                stream: self.stream,
+            },
+        )
+    }
 }
 
 pub struct Null;
@@ -148,7 +167,7 @@ impl From<OutputStreamSpec> for OutputStream {
             OutputStreamSpec::Stdout => OutputStream::new_stdout(),
             OutputStreamSpec::Stderr => OutputStream::new_stderr(),
             OutputStreamSpec::File(f) => OutputStream::new_file(
-                f.file, f.append && !f.create,
+                f.file, f.append,
             )
         }
     }
@@ -199,49 +218,61 @@ pub trait DualWriter {
 }
 
 pub struct DualOutputStream {
-    pub stdout: OutputStream,
-    pub stderr: OutputStream,
+    pub outputs: Vec<(InputStream, OutputStream)>,
 }
 
 impl DualOutputStream {
-    pub fn new(stdout: OutputStream, stderr: OutputStream) -> Self {
-        DualOutputStream { stdout, stderr }
+    pub fn new() -> Self {
+        DualOutputStream { outputs: Vec::new() }
     }
 
-    pub fn from_spec(specs: Vec<PipeSpec>) -> Self {
-        let mut stdout = MultiplexedOutput::new();
-        let mut stderr = MultiplexedOutput::new();
+    pub fn from_spec(specs: LoggingSpec) -> Self {
+        let mut outputs = Vec::new();
 
-        for PipeSpec { output, input } in specs {
-            let stream = output.into();
-            match input {
-                InputStream::Stdout => {
-                    stdout.add(stream);
-                }
-                InputStream::Stderr => {
-                    stderr.add(stream);
-                }
-            }
+        for PipeSpec { output, input } in specs.pipes {
+            outputs.push((input, output.into()));
         }
 
-        Self::new(stdout.into(), stderr.into())
+        Self { outputs }
     }
 }
 
 impl DualWriter for DualOutputStream {
     fn write_stdout(&mut self, buf: &[u8]) -> io::Result<usize> {
-        self.stdout.write(buf)
+        let mut written = 0;
+        for (input, output) in &mut self.outputs {
+            if input.is_stdout() {
+                written = output.write(buf)?.max(written);
+            }
+        }
+        Ok(written)
     }
 
     fn write_stderr(&mut self, buf: &[u8]) -> io::Result<usize> {
-        self.stdout.write(buf)
+        let mut written = 0;
+        for (input, output) in &mut self.outputs {
+            if input.is_stderr() {
+                written = output.write(buf)?.max(written);
+            }
+        }
+        Ok(written)
     }
 
     fn flush_stdout(&mut self) -> io::Result<()> {
-        self.stdout.flush()
+        for (input, output) in &mut self.outputs {
+            if input.is_stdout() {
+                output.flush()?;
+            }
+        }
+        Ok(())
     }
 
     fn flush_stderr(&mut self) -> io::Result<()> {
-        self.stderr.flush()
+        for (input, output) in &mut self.outputs {
+            if input.is_stderr() {
+                output.flush()?;
+            }
+        }
+        Ok(())
     }
 }

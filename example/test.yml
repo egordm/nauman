@@ -48,13 +48,13 @@ logging:
   handlers:
     - type: file
       stdout: true
-      stderr: true
-      output: ./example/logs/full.log
+      stderr: false
+      output: ./logs/full.log
     - type: file
       stdout: true
-      stderr: false
+      stderr: true
       split: true
-      output: ./example/logs/separate
+      output: ./logs/separate
     - type: console
       stdout: true
       stderr: true
