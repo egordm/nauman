@@ -44,13 +44,13 @@ pub struct Command {
     pub policy: ExecutionPolicy,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Routine {
     commands: Vec<CommandId>,
     pub is_hook: bool,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Flow {
     pub dependencies: Dependencies,
     pub routines: Routines,
@@ -183,6 +183,7 @@ pub struct StackItem {
     pub scheduled: bool,
     pub is_hook: bool,
     pub length: i32,
+    pub focus_command: Option<CommandId>,
 }
 
 pub struct FlowIterator<'a> {
@@ -192,8 +193,11 @@ pub struct FlowIterator<'a> {
 
 impl <'a> FlowIterator<'a> {
     pub fn new(flow: &'a Flow) -> Self {
-        let mut res = FlowIterator { flow, routine_stack: Vec::new() };
-        res.push(MAIN_ROUTINE_NAME.to_string()  );
+        let mut res = FlowIterator {
+            flow,
+            routine_stack: Vec::new(),
+        };
+        res.push(MAIN_ROUTINE_NAME.to_string(), None);
         res
     }
 
@@ -233,7 +237,7 @@ impl <'a> FlowIterator<'a> {
         Some((command_id, command))
     }
 
-    fn push(&mut self, routine_id: RoutineId) {
+    fn push(&mut self, routine_id: RoutineId, focus: Option<CommandId>) {
         let routine = self.routine(&routine_id);
 
         self.routine_stack.push(StackItem{
@@ -242,6 +246,7 @@ impl <'a> FlowIterator<'a> {
             scheduled: false,
             is_hook: routine.is_hook,
             length: routine.commands.len() as i32,
+            focus_command: focus,
         });
     }
 
@@ -260,19 +265,18 @@ impl <'a> FlowIterator<'a> {
         if !command.is_hook {
             // Add a task-specific hook
             if let Some(hook) = command.hooks.get(&hook_type) {
-                self.push(hook.clone());
+                self.push(hook.clone(), Some(command_id.clone()));
             }
             // Add a global hook
             if let Some(hook) = self.flow.hooks.get(&hook_type) {
-                self.push(hook.clone());
+                self.push(hook.clone(), Some(command_id.clone()));
             }
         }
     }
-
 }
 
 impl <'a> Iterator for FlowIterator<'a> {
-    type Item = (CommandId, Command);
+    type Item = (CommandId, Command, Option<CommandId>);
 
     fn next(&mut self) -> Option<Self::Item> {
         match self.head() {
@@ -282,7 +286,7 @@ impl <'a> Iterator for FlowIterator<'a> {
                 self.pop();
                 if !item.is_hook {
                     if let Some(hook_id) = self.flow.hooks.get(&Hook::AfterJob) {
-                        self.push(hook_id.clone());
+                        self.push(hook_id.clone(), None);
                     }
                 }
                 self.next()
@@ -291,7 +295,7 @@ impl <'a> Iterator for FlowIterator<'a> {
                 self.increment_position();
                 if !item.is_hook {
                     if let Some(hook_id) = self.flow.hooks.get(&Hook::BeforeJob) {
-                        self.push(hook_id.clone());
+                        self.push(hook_id.clone(), None);
                     }
                 }
                 self.next()
@@ -299,13 +303,14 @@ impl <'a> Iterator for FlowIterator<'a> {
             Some(item) if !item.is_hook && !item.scheduled => {
                 self.set_scheduled();
                 // Add a task-specific hook
-                let (_, command) = self.get_command(&item).expect("Command not found");
+                let (command_id, command) = self.get_command(&item).expect("Command not found");
+                let command_id = command_id.clone();
                 if let Some(hook_id) = command.hooks.get(&Hook::BeforeTask).cloned() {
-                    self.push(hook_id.clone());
+                    self.push(hook_id.clone(), Some(command_id.clone()));
                 }
                 // Add a global hook
                 if let Some(hook_id) = self.flow.hooks.get(&Hook::BeforeTask) {
-                    self.push(hook_id.clone());
+                    self.push(hook_id.clone(), Some(command_id.clone()));
                 }
                 self.next()
             }
@@ -318,15 +323,15 @@ impl <'a> Iterator for FlowIterator<'a> {
                 if !item.is_hook {
                     // Add a global hook
                     if let Some(hook_id) = self.flow.hooks.get(&Hook::AfterTask) {
-                        self.push(hook_id.clone());
+                        self.push(hook_id.clone(), Some(command_id.clone()));
                     }
                     // Add a task-specific hook
                     if let Some(hook_id) = command.hooks.get(&Hook::AfterTask).cloned() {
-                        self.push(hook_id.clone());
+                        self.push(hook_id.clone(), Some(command_id.clone()));
                     }
                 }
 
-                Some((command_id, command))
+                Some((command_id, command, item.focus_command.clone()))
             }
             _ => None
         }

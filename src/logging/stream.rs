@@ -173,57 +173,19 @@ impl From<OutputStreamSpec> for OutputStream {
     }
 }
 
-pub struct MultiplexedOutput {
-    outputs: Vec<OutputStream>,
+pub trait MultiWriter {
+    fn write_stream(&mut self, stream: InputStream, buf: &[u8]) -> io::Result<usize>;
+
+    fn flush_stream(&mut self, stream: InputStream) -> io::Result<()>;
 }
 
-impl Into<OutputStream> for MultiplexedOutput {
-    fn into(self) -> OutputStream {
-        OutputStream::new_writer(Box::new(self))
-    }
-}
-
-impl MultiplexedOutput {
-    pub fn new() -> Self {
-        MultiplexedOutput { outputs: Vec::new() }
-    }
-
-    pub fn add(&mut self, output: OutputStream) {
-        self.outputs.push(output);
-    }
-}
-
-impl std::io::Write for MultiplexedOutput {
-    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-        for output in &mut self.outputs {
-            output.write(buf)?;
-        }
-        Ok(buf.len())
-    }
-
-    fn flush(&mut self) -> io::Result<()> {
-        for output in &mut self.outputs {
-            output.flush()?;
-        }
-        Ok(())
-    }
-}
-
-pub trait DualWriter {
-    fn write_stdout(&mut self, buf: &[u8]) -> io::Result<usize>;
-    fn write_stderr(&mut self, buf: &[u8]) -> io::Result<usize>;
-
-    fn flush_stdout(&mut self) -> io::Result<()>;
-    fn flush_stderr(&mut self) -> io::Result<()>;
-}
-
-pub struct DualOutputStream {
+pub struct MultiOutputStream {
     pub outputs: Vec<(InputStream, OutputStream)>,
 }
 
-impl DualOutputStream {
+impl MultiOutputStream {
     pub fn new() -> Self {
-        DualOutputStream { outputs: Vec::new() }
+        MultiOutputStream { outputs: Vec::new() }
     }
 
     pub fn from_spec(specs: LoggingSpec) -> Self {
@@ -237,39 +199,30 @@ impl DualOutputStream {
     }
 }
 
-impl DualWriter for DualOutputStream {
-    fn write_stdout(&mut self, buf: &[u8]) -> io::Result<usize> {
+impl std::io::Write for MultiOutputStream {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        MultiWriter::write_stream(self, InputStream::Stdout, buf)
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        MultiWriter::flush_stream(self, InputStream::Stdout)
+    }
+}
+
+impl MultiWriter for MultiOutputStream {
+    fn write_stream(&mut self, stream: InputStream, buf: &[u8]) -> io::Result<usize> {
         let mut written = 0;
         for (input, output) in &mut self.outputs {
-            if input.is_stdout() {
+            if input.is_compatible(stream) {
                 written = output.write(buf)?.max(written);
             }
         }
         Ok(written)
     }
 
-    fn write_stderr(&mut self, buf: &[u8]) -> io::Result<usize> {
-        let mut written = 0;
+    fn flush_stream(&mut self, stream: InputStream) -> io::Result<()> {
         for (input, output) in &mut self.outputs {
-            if input.is_stderr() {
-                written = output.write(buf)?.max(written);
-            }
-        }
-        Ok(written)
-    }
-
-    fn flush_stdout(&mut self) -> io::Result<()> {
-        for (input, output) in &mut self.outputs {
-            if input.is_stdout() {
-                output.flush()?;
-            }
-        }
-        Ok(())
-    }
-
-    fn flush_stderr(&mut self) -> io::Result<()> {
-        for (input, output) in &mut self.outputs {
-            if input.is_stderr() {
+            if input.is_compatible(stream) {
                 output.flush()?;
             }
         }

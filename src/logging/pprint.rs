@@ -14,6 +14,6 @@ pub fn flex_banner(text: impl ToString) -> String {
     format!("{0}\n{1} {2} {1}\n{0}", banner, padding, text)
 }
 
-pub fn command(text: impl ToString) -> colored::ColoredString {
-    format!("$ {}", text.to_string()).cyan()
+pub fn command(text: &str) -> colored::ColoredString {
+    format!("$ {}", text).cyan()
 }

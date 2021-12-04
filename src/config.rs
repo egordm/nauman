@@ -4,6 +4,20 @@ use heck::SnakeCase;
 use serde::{Serialize, Deserialize};
 use crate::common::Env;
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub enum LogLevel {
+    Debug = 4,
+    Info = 3,
+    Warn = 2,
+    Error = 1,
+}
+
+impl Default for LogLevel {
+    fn default() -> Self {
+        LogLevel::Info
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Options {
     shell: Option<String>,
@@ -61,6 +75,10 @@ pub struct LogOptions {
     pub stdout: bool,
     #[serde(default = "true_default")]
     pub stderr: bool,
+    #[serde(default = "true_default")]
+    pub hooks: bool,
+    #[serde(default = "true_default")]
+    pub internal: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -90,6 +108,8 @@ pub struct LoggingConfig {
     #[serde(default = "true_default")]
     pub ansi: bool,
     pub handlers: Vec<LogHandler>,
+    #[serde(default)]
+    pub level: LogLevel,
 }
 
 #[serde(rename_all = "snake_case")]

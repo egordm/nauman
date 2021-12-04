@@ -6,10 +6,10 @@ use std::{
     process::Stdio,
     os::unix::io::{AsRawFd, FromRawFd},
 };
-use crate::{flow, flow::CommandId, logging::{MultiplexedOutput, OutputStream, DualOutputStream, DualWriter}, common::Env, pprint, logging, Logger};
+use crate::{flow, flow::CommandId, logging::{OutputStream, MultiOutputStream, MultiWriter}, common::Env, logging, Logger};
 use anyhow::{Context as AnyhowContext, Result};
 use crate::config::{ExecutionPolicy, LoggingConfig, Shell, TaskHandler};
-use crate::logging::{LoggingSpec, PipeSpec};
+use crate::logging::{ActionShell, InputStream, LoggingSpec, PipeSpec};
 use colored::*;
 use crate::flow::Command;
 
@@ -41,8 +41,40 @@ pub struct ExecutionContext {
     pub env: Env,
     pub cwd: PathBuf,
     pub state: ExecutionState,
-    pub current: CommandId,
+    pub will_execute: bool,
+    pub current: Option<(CommandId, Command)>,
+    pub focus: Option<CommandId>,
     pub previous: Option<ExecutionResult>,
+}
+
+impl ExecutionContext {
+    pub fn new(env: Env, cwd: PathBuf) -> Self {
+        Self {
+            env,
+            cwd,
+            state: ExecutionState::Running,
+            will_execute: true,
+            current: None,
+            focus: None,
+            previous: None,
+        }
+    }
+
+    pub fn is_in_hook(&self) -> bool {
+        if let Some((_, command)) = &self.current {
+            command.is_hook
+        } else {
+            false
+        }
+    }
+
+    pub fn current_command_id(&self) -> &CommandId {
+        self.current.as_ref().map(|(id, _)| id).expect("No current command")
+    }
+
+    pub fn current_command(&self) -> &Command {
+        self.current.as_ref().map(|(_, command)| command).expect("No current command")
+    }
 }
 
 pub fn resolve_cwd(current: &PathBuf, cwd: Option<&String>) -> PathBuf {
@@ -68,7 +100,7 @@ const BUFFER_SIZE: usize = 1024; // 1 KB
 
 pub fn capture_command(
     child: &std::process::Child,
-    output: &mut DualOutputStream,
+    output: &mut MultiOutputStream,
 ) -> Result<()> {
     // TODO: split into two functions
     let mut buffer = [0; BUFFER_SIZE];
@@ -87,7 +119,7 @@ pub fn capture_command(
                 stdout_done = true;
             }
             Ok(Some(size)) => {
-                output.write_stdout(&buffer[0..size]).unwrap();
+                output.write_stream(InputStream::Stdout, &buffer[0..size]).unwrap();
             }
             Err(e) => return Err(e.into()),
         }
@@ -98,7 +130,7 @@ pub fn capture_command(
                 stderr_done = true;
             }
             Ok(Some(size)) => {
-                output.write_stderr(&buffer[0..size]).unwrap();
+                output.write_stream(InputStream::Stderr, &buffer[0..size]).unwrap();
             }
             Err(e) => return Err(e.into()),
         }
@@ -127,18 +159,24 @@ impl ExecutableHandler for Shell {
         context: &mut ExecutionContext,
         logger: &mut Logger,
     ) -> Result<ExecutionResult> {
-        // Announce execution
-        println!("{}", pprint::command(&self.run));
-
         // Build env
         let mut env = context.env.clone();
         env.extend(command.env.clone());
 
         // Build cwd
         let cwd = resolve_cwd(&context.cwd, command.cwd.as_ref());
+        let shell = "sh";
+
+        // Announce execution
+        logger.log_action(ActionShell {
+            handler: &self,
+            env: &env,
+            cwd: &cwd,
+            shell: &shell,
+        })?;
 
         // Build command
-        let mut child = std::process::Command::new("sh")
+        let mut child = std::process::Command::new(shell)
             .args(&["-c", &self.run])
             .envs(env)
             .current_dir(cwd)
@@ -152,7 +190,7 @@ impl ExecutableHandler for Shell {
         let exit_code = child.wait()?.code().unwrap_or(-1);
 
         Ok(ExecutionResult {
-            command_id: context.current.clone(),
+            command_id: context.current_command_id().clone(),
             exit_code,
             aborted: false,
         })
@@ -178,32 +216,58 @@ pub fn execute_command(
 pub const ENV_PREV_CODE: &str = "NAUMAN_PREV_CODE";
 pub const ENV_PREV_ID: &str = "NAUMAN_PREV_ID";
 
-pub struct Executor {
+pub struct Executor<'a> {
+    pub flow: &'a flow::Flow,
     pub context: ExecutionContext,
 }
 
-impl Executor {
-    pub fn new(context: ExecutionContext) -> Self {
-        Executor { context }
+impl<'a> Executor<'a> {
+    pub fn new(flow: &'a flow::Flow) -> Result<Self> {
+        let mut env: Env = std::env::vars().collect();
+        env.extend(flow.env.clone());
+
+        let cwd = resolve_cwd(&std::env::current_dir()?, flow.cwd.as_ref());
+
+        Ok(Executor {
+            flow,
+            context: ExecutionContext::new(env, cwd),
+        })
     }
 
     pub fn execute(
         &mut self,
+        logger: &mut Logger,
+    ) -> Result<()> {
+        let mut results = Vec::new();
+        let mut flow_iter = self.flow.iter();
+        while let Some((command_id, command, focus_id)) = flow_iter.next() {
+            let result = self.execute_step(&command_id, &command, focus_id.as_ref(), logger)?;
+            flow_iter.push_result(&command_id, &result);
+
+            if !command.is_hook {
+                results.push((command_id.clone(), result));
+            }
+        }
+        Ok(())
+    }
+
+    pub fn execute_step(
+        &mut self,
         command_id: &CommandId,
         command: &flow::Command,
+        focus_id: Option<&CommandId>,
         logger: &mut Logger,
     ) -> Result<ExecutionResult> {
-        self.context.current = command_id.clone();
-
-        let execute = match command.policy {
+        self.context.current = Some((command_id.clone(), command.clone()));
+        self.context.focus = focus_id.map(|id| id.clone());
+        self.context.will_execute = match command.policy {
             ExecutionPolicy::NoPriorFailed => self.context.state != ExecutionState::Failed,
             ExecutionPolicy::PriorSuccess => self.context.previous.as_ref().map(|r| r.is_success()).unwrap_or(true),
             ExecutionPolicy::Always => true
         };
+        logger.switch(command, &self.context)?;
 
-        let result = if execute {
-            logger.switch(command, &self.context);
-
+        let result = if self.context.will_execute {
             // Prepare context
             if let Some(previous) = self.context.previous.as_ref() {
                 self.context.env.insert(ENV_PREV_CODE.to_string(), previous.exit_code.to_string());
@@ -229,41 +293,4 @@ impl Executor {
         }
         Ok(result)
     }
-}
-
-pub fn execute_flow(
-    flow: &flow::Flow,
-    logger: &mut Logger,
-) -> Result<Vec<(CommandId, ExecutionResult)>> {
-    let mut env: Env = std::env::vars().collect();
-    env.extend(flow.env.clone());
-
-    let cwd = resolve_cwd(&std::env::current_dir()?, flow.cwd.as_ref());
-
-    let mut executor = Executor::new(ExecutionContext {
-        env,
-        cwd,
-        state: ExecutionState::Running,
-        current: CommandId::new(),
-        previous: None,
-    });
-
-
-    let mut results = Vec::new();
-    let mut flow_iter = flow.iter();
-    while let Some((command_id, command)) = flow_iter.next() {
-        if command.is_hook {
-            println!("{}", pprint::flex_banner(format!("Task: {}", &command.name)).yellow());
-        } else {
-            println!("{}", pprint::flex_banner(format!("Task: {}", &command.name)).green());
-        }
-
-        let result = executor.execute(&command_id, &command, logger)?;
-        flow_iter.push_result(&command_id, &result);
-
-        if !command.is_hook {
-            results.push((command_id.clone(), result));
-        }
-    }
-    Ok(results)
 }

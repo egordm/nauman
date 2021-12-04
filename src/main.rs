@@ -1,7 +1,7 @@
 use std::{
     fs,
 };
-use crate::execution::execute_flow;
+use crate::execution::{ Executor};
 use crate::logging::Logger;
 
 mod common;
@@ -9,7 +9,6 @@ mod config;
 mod logging;
 mod flow;
 mod execution;
-mod pprint;
 
 fn main() {
     let contents = fs::read_to_string("example/test.yml")
@@ -19,5 +18,5 @@ fn main() {
     let mut logger = Logger::new(job.logging.clone());
     let flow = flow::Flow::parse(&job).unwrap();
 
-    execute_flow(&flow, &mut logger).unwrap();
+    Executor::new(&flow).unwrap().execute(&mut logger).unwrap();
 }

@@ -27,6 +27,14 @@ impl InputStream {
         }
     }
 
+    pub fn is_compatible(&self, other: Self) -> bool {
+        match (self, other) {
+            (InputStream::Both, _) => true,
+            (InputStream::Stdout, InputStream::Stdout) => true,
+            (InputStream::Stderr, InputStream::Stderr) => true,
+            _ => false,
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -50,6 +58,10 @@ pub struct PipeSpec {
 
 impl PipeSpec {
     pub fn from_handler(handler: &LogHandler, input: InputStream, context: &ExecutionContext) -> Result<Vec<Self>> {
+        if !handler.options.hooks && context.is_in_hook() {
+            return Ok(Vec::new());
+        }
+
         match &handler.handler {
             LogHandlerType::File(f) => {
                 let mut file = resolve_cwd(&context.cwd, f.output.as_ref());
@@ -58,14 +70,19 @@ impl PipeSpec {
                         return Err(format_err!("Cannot create directory '{}'", file.display()));
                     }
                     std::fs::create_dir_all(&file)?;
-                    file.push(format!("{}.log", &context.current));
+                    let filename = if context.is_in_hook() {
+                        context.focus.clone().unwrap_or_else(|| "job".to_string())
+                    } else {
+                        context.current_command_id().clone()
+                    };
+                    file.push(format!("{}.log", filename));
                 }
 
                 return Ok(vec![Self {
                     input,
                     output: OutputStreamSpec::File(FileOutputSpec {
                         file,
-                        append: !f.split,
+                        append: true,
                     }),
                 }]);
             },
