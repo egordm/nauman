@@ -1,7 +1,6 @@
 use std::collections::HashMap;
-use std::path::Iter;
 use crate::config;
-use anyhow::{anyhow, Context, Result};
+use anyhow::{anyhow, Result};
 use crate::common::Env;
 
 pub type CommandId = String;

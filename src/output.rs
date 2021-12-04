@@ -1,10 +1,7 @@
-use serde::{Serialize, Deserialize};
 use std::{
-    borrow::Cow,
-    collections::HashMap,
-    fmt, fs,
+    fs,
     io::{self, BufWriter, Write},
-    sync::{mpsc, Arc, Mutex},
+    sync::{Mutex},
 };
 
 pub struct Stdout {

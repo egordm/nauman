@@ -2,12 +2,12 @@ use std::{
     io,
     fs::File,
     io::{BufReader, Read, Write},
-    path::{Path, PathBuf},
+    path::{PathBuf},
     process::Stdio,
-    os::unix::io::{AsRawFd, FromRawFd, IntoRawFd}
+    os::unix::io::{AsRawFd, FromRawFd}
 };
-use crate::{config, flow, flow::CommandId, output::{MultiplexedOutput, Output}, common::Env, pprint};
-use anyhow::{anyhow, Context as AnyhowContext, Result};
+use crate::{flow, flow::CommandId, output::{MultiplexedOutput, Output}, common::Env, pprint};
+use anyhow::{Context as AnyhowContext, Result};
 
 
 #[derive(Debug, Clone)]
