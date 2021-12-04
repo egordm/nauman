@@ -69,7 +69,7 @@ pub enum Hook {
     AfterJob,
     BeforeTask,
     AfterTask,
-    OnError,
+    OnFailure,
     OnSuccess,
 }
 

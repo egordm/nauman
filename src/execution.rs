@@ -19,6 +19,12 @@ pub struct ExecutionResult {
     pub exit_code: i32,
 }
 
+impl ExecutionResult {
+    pub fn is_success(&self) -> bool {
+        self.exit_code == 0
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct ExecutionContext {
     pub env: Env,
@@ -169,7 +175,9 @@ pub fn execute_flow(
     });
 
     let mut results = Vec::new();
-    for (command_id, command) in flow.iter() {
+
+    let mut flow_iter = flow.iter();
+    while let Some((command_id, command)) = flow_iter.next() {
         if command.is_hook {
             println!("{}", pprint::flex_banner(format!("Task: {}", &command.name)).yellow());
         } else {
@@ -178,8 +186,8 @@ pub fn execute_flow(
         println!("{}", pprint::command(&command.run));
 
         let result = executor.execute(&command_id, &command, logging)?;
+        flow_iter.push_result(&command_id, &result);
         results.push(result);
     }
-
     Ok(results)
 }

@@ -37,7 +37,7 @@ hooks:
   after_job:
     - name: After Scenario
       run: ls
-  on_error:
+  on_failure:
     - name: On Error
       run: echo $(pwd)
   on_success:

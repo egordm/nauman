@@ -7,6 +7,7 @@ use crate::{
     config,
     config::{Hook, LoggingConfig}
 };
+use crate::execution::ExecutionResult;
 
 pub type CommandId = String;
 pub type RoutineId = String;
@@ -194,10 +195,6 @@ impl <'a> FlowIterator<'a> {
         self.routine_stack.last().cloned()
     }
 
-    fn head_ref(&self) -> Option<&StackItem> {
-        self.routine_stack.last()
-    }
-
     fn head_mut(&mut self) -> Option<&mut StackItem> {
         self.routine_stack.last_mut()
     }
@@ -244,6 +241,26 @@ impl <'a> FlowIterator<'a> {
 
     fn pop(&mut self) {
         self.routine_stack.pop();
+    }
+
+    pub fn push_result(
+        &mut self,
+        command_id: &CommandId,
+        result: &ExecutionResult
+    ) {
+        let hook_type = if result.is_success() { Hook::OnSuccess } else { Hook::OnFailure };
+
+        let command = self.command(command_id);
+        if !command.is_hook {
+            // Add a task-specific hook
+            if let Some(hook) = command.hooks.get(&hook_type) {
+                self.push(hook.clone());
+            }
+            // Add a global hook
+            if let Some(hook) = self.flow.hooks.get(&hook_type) {
+                self.push(hook.clone());
+            }
+        }
     }
 
 }
