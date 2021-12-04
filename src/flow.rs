@@ -223,6 +223,13 @@ impl <'a> FlowIterator<'a> {
         self.flow.dependencies.get(command_id).expect("Command not found")
     }
 
+    fn get_command(&self, head: &StackItem) -> Option<(&CommandId, &Command)> {
+        let routine = self.routine(&head.routine);
+        let command_id = routine.commands.get(head.position as usize).expect("Command not found");
+        let command = self.command(&command_id);
+        Some((command_id, command))
+    }
+
     fn push(&mut self, routine_id: RoutineId) {
         let routine = self.routine(&routine_id);
 
@@ -268,6 +275,12 @@ impl <'a> Iterator for FlowIterator<'a> {
             }
             Some(item) if !item.is_hook && !item.scheduled => {
                 self.set_scheduled();
+                // Add a task-specific hook
+                let (_, command) = self.get_command(&item).expect("Command not found");
+                if let Some(hook_id) = command.hooks.get(&Hook::BeforeTask).cloned() {
+                    self.push(hook_id.clone());
+                }
+                // Add a global hook
                 if let Some(hook_id) = self.flow.hooks.get(&Hook::BeforeTask) {
                     self.push(hook_id.clone());
                 }
@@ -275,17 +288,22 @@ impl <'a> Iterator for FlowIterator<'a> {
             }
             Some(item) => {
                 self.increment_position();
-                let routine = self.routine(&item.routine);
-                let command_id = routine.commands.get(item.position as usize).expect("Command not found");
-                let command = self.command(&command_id);
-                let result = (command_id.clone(), command.clone());
+
+                let (command_id, command) = self.get_command(&item).expect("Command not found");
+                let (command_id, command) = (command_id.clone(), command.clone());
 
                 if !item.is_hook {
+                    // Add a global hook
                     if let Some(hook_id) = self.flow.hooks.get(&Hook::AfterTask) {
                         self.push(hook_id.clone());
                     }
+                    // Add a task-specific hook
+                    if let Some(hook_id) = command.hooks.get(&Hook::AfterTask).cloned() {
+                        self.push(hook_id.clone());
+                    }
                 }
-                Some(result)
+
+                Some((command_id, command))
             }
             _ => None
         }

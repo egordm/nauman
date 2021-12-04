@@ -171,9 +171,9 @@ pub fn execute_flow(
     let mut results = Vec::new();
     for (command_id, command) in flow.iter() {
         if command.is_hook {
-            println!("{}", pprint::flex_banner(format!("Task {}", &command.name)).yellow());
+            println!("{}", pprint::flex_banner(format!("Task: {}", &command.name)).yellow());
         } else {
-            println!("{}", pprint::flex_banner(format!("Task {}", &command.name)).green());
+            println!("{}", pprint::flex_banner(format!("Task: {}", &command.name)).green());
         }
         println!("{}", pprint::command(&command.run));
 
