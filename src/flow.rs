@@ -1,6 +1,8 @@
 use std::collections::HashMap;
 use crate::config;
 use anyhow::{anyhow, Result};
+use lazy_static::lazy_static;
+use regex::Regex;
 use crate::common::Env;
 
 pub type CommandId = String;
@@ -36,8 +38,19 @@ impl Default for Routine {
     }
 }
 
+lazy_static! {
+    static ref IDENTIFIER_REGEX: Regex = Regex::new(r"[^a-zA-Z0-9_\-]").unwrap();
+}
+
+fn format_identifier(text: &str) -> String {
+    IDENTIFIER_REGEX.replace_all(
+        &text.to_lowercase().replace(" ", "-"),
+            ""
+    ).to_string()
+}
+
 fn generate_task_id(task: &config::Task, counter: usize, prefix: impl ToString) -> String {
-    format!("{}-{:03}-{}", prefix.to_string(), counter, task.name)
+    format!("{}_{:03}_{}", prefix.to_string(), counter, format_identifier(&task.name))
 }
 
 impl Routine {
