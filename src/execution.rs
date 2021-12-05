@@ -6,8 +6,10 @@ use std::{
     process::Stdio,
     os::unix::io::{AsRawFd, FromRawFd},
 };
-use crate::{flow, flow::CommandId, logging::{OutputStream, MultiOutputStream, MultiWriter}, common::Env, logging, Logger};
+use std::time::SystemTime;
+use crate::{flow, flow::CommandId, logging::{OutputStream, MultiOutputStream, MultiWriter}, common::Env, logging, Logger, config};
 use anyhow::{Context as AnyhowContext, Result};
+use chrono::{DateTime, Local, Utc};
 use crate::config::{ExecutionPolicy, LoggingConfig, Shell, TaskHandler};
 use crate::logging::{ActionShell, InputStream, LoggingSpec, PipeSpec};
 use colored::*;
@@ -38,8 +40,10 @@ impl ExecutionResult {
 
 #[derive(Debug, Clone)]
 pub struct ExecutionContext {
+    pub options: config::Options,
     pub env: Env,
     pub cwd: PathBuf,
+    pub log_dir: PathBuf,
     pub state: ExecutionState,
     pub will_execute: bool,
     pub current: Option<(CommandId, Command)>,
@@ -48,10 +52,12 @@ pub struct ExecutionContext {
 }
 
 impl ExecutionContext {
-    pub fn new(env: Env, cwd: PathBuf) -> Self {
+    pub fn new(options: config::Options, env: Env, cwd: PathBuf) -> Self {
         Self {
+            options,
             env,
             cwd,
+            log_dir: PathBuf::new(),
             state: ExecutionState::Running,
             will_execute: true,
             current: None,
@@ -165,7 +171,7 @@ impl ExecutableHandler for Shell {
 
         // Build cwd
         let cwd = resolve_cwd(&context.cwd, command.cwd.as_ref());
-        let shell = "sh";
+        let shell = context.options.shell.clone();
 
         // Announce execution
         logger.log_action(ActionShell {
@@ -175,19 +181,24 @@ impl ExecutableHandler for Shell {
             shell: &shell,
         })?;
 
-        // Build command
-        let mut child = std::process::Command::new(shell)
-            .args(&["-c", &self.run])
-            .envs(env)
-            .current_dir(cwd)
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()
-            .with_context(|| format!("Failed to execute command: {}", self.run))?;
+        let exit_code = if context.options.dry_run {
+            // Always succeed on dry run
+            0
+        } else {
+            // Build command
+            let mut child = std::process::Command::new(shell)
+                .args(&["-c", &self.run])
+                .envs(env)
+                .current_dir(cwd)
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped())
+                .spawn()
+                .with_context(|| format!("Failed to execute command: {}", self.run))?;
 
-        // Execute command, capture its output and return its exit code
-        capture_command(&child, logger.mut_output())?;
-        let exit_code = child.wait()?.code().unwrap_or(-1);
+            // Execute command, capture its output and return its exit code
+            capture_command(&child, logger.mut_output())?;
+            child.wait()?.code().unwrap_or(-1)
+        };
 
         Ok(ExecutionResult {
             command_id: context.current_command_id().clone(),
@@ -222,7 +233,10 @@ pub struct Executor<'a> {
 }
 
 impl<'a> Executor<'a> {
-    pub fn new(flow: &'a flow::Flow) -> Result<Self> {
+    pub fn new(
+        options: config::Options,
+        flow: &'a flow::Flow
+    ) -> Result<Self> {
         let mut env: Env = std::env::vars().collect();
         env.extend(flow.env.clone());
 
@@ -230,7 +244,7 @@ impl<'a> Executor<'a> {
 
         Ok(Executor {
             flow,
-            context: ExecutionContext::new(env, cwd),
+            context: ExecutionContext::new(options, env, cwd),
         })
     }
 
@@ -238,6 +252,14 @@ impl<'a> Executor<'a> {
         &mut self,
         logger: &mut Logger,
     ) -> Result<()> {
+        // Create log dir
+        self.context.log_dir = resolve_cwd(&self.context.cwd, logger.get_config().dir.as_ref());
+        self.context.log_dir.push(
+            format!("{}_{}", self.flow.id, Local::now().format("%Y-%m-%dT%H:%M:%S"))
+        );
+        std::fs::create_dir_all(&self.context.log_dir)?;
+
+
         let mut results = Vec::new();
         let mut flow_iter = self.flow.iter();
         while let Some((command_id, command, focus_id)) = flow_iter.next() {

@@ -64,7 +64,13 @@ impl PipeSpec {
 
         match &handler.handler {
             LogHandlerType::File(f) => {
+                // Don't create config files on dry run
+                if context.options.dry_run {
+                    return Ok(Vec::new());
+                }
+
                 let mut file = resolve_cwd(&context.cwd, f.output.as_ref());
+                // Split logs should be named appropriately
                 if f.split {
                     if file.is_file() {
                         return Err(format_err!("Cannot create directory '{}'", file.display()));

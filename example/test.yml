@@ -1,4 +1,4 @@
-id: test
+id: rockstar
 name: Test Flow introspecting Rockstar Repo
 cwd: ./example
 env:
@@ -51,16 +51,17 @@ hooks:
       run: ls
 
 logging:
+  dir: logs
   handlers:
     - type: file
       stdout: true
       stderr: false
-      output: ./logs/full.log
+      output: ./full.log
     - type: file
       stdout: true
       stderr: true
       split: true
-      output: ./logs/separate
+      output: ./separate
     - type: console
       stdout: true
       stderr: true

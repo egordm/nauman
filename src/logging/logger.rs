@@ -51,9 +51,8 @@ impl<'a> LogAction for ActionShell<'a> {
     }
 }
 
-
 pub struct Logger {
-    pub config: LoggingConfig,
+    config: LoggingConfig,
     pub output: MultiOutputStream,
 }
 
@@ -90,5 +89,9 @@ impl Logger {
 
     pub fn level(&self) -> LogLevel {
         self.config.level
+    }
+
+    pub fn get_config(&self) -> &LoggingConfig {
+        &self.config
     }
 }

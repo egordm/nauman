@@ -52,6 +52,7 @@ pub struct Routine {
 
 #[derive(Debug, Clone)]
 pub struct Flow {
+    pub id: String,
     pub dependencies: Dependencies,
     pub routines: Routines,
     pub hooks: Hooks,
@@ -160,12 +161,14 @@ impl FlowBuilder {
         mut self,
         job: &config::Job,
     ) -> Result<Flow> {
+        let id = job.id.clone().unwrap_or_else(|| format_identifier(&job.name));
         self.policy = job.policy;
         let hooks = self.parse_hooks(&job.hooks, "", false)?;
         let main_routine = self.parse_routine(&job.tasks, "", false)?;
         self.routines.insert(MAIN_ROUTINE_NAME.to_string(), main_routine);
 
         Ok(Flow {
+            id,
             dependencies: self.dependencies,
             routines: self.routines,
             env: job.env.clone().unwrap_or_default(),

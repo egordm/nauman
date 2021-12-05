@@ -18,18 +18,27 @@ impl Default for LogLevel {
     }
 }
 
+fn default_shell() -> String {
+    if cfg!(target_os = "windows") {
+        "cmd.exe".to_string()
+    } else {
+        "sh".to_string()
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Options {
-    shell: Option<String>,
+    #[serde(default = "default_shell")]
+    pub shell: String,
     #[serde(default = "false_default")]
-    dry_run: bool,
+    pub dry_run: bool,
 }
 
 impl Default for Options {
     fn default() -> Self {
         Self {
-            shell: None,
-            dry_run: false,
+            shell: default_shell(),
+            dry_run: false_default(),
         }
     }
 }
@@ -107,6 +116,7 @@ pub struct LogHandler {
 pub struct LoggingConfig {
     #[serde(default = "true_default")]
     pub ansi: bool,
+    pub dir: Option<String>,
     pub handlers: Vec<LogHandler>,
     #[serde(default)]
     pub level: LogLevel,
@@ -151,6 +161,7 @@ impl Display for ExecutionPolicy {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Job {
+    pub id: Option<String>,
     pub name: String,
     pub env: Option<Env>,
     pub cwd: Option<String>,
