@@ -2,6 +2,11 @@
 <div align="center">
     <h1>nauman</h1>
     <p>
+       <img alt="Crates.io" src="https://img.shields.io/crates/v/nauman">
+       <a href="LICENSE"><img src="https://img.shields.io/github/license/EgorDm/nauman" alt="License"></a>
+ <a href="https://github.com/EgorDm/nauman/actions/workflows/ci.yml"><img src="https://github.com/EgorDm/nauman/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+    </p>
+    <p>
         <b>A CI inspired approach for local job automation.</b>
     </p>
 </div>
