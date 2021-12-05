@@ -1,7 +1,6 @@
 use std::{
     collections::HashMap,
     fmt::{Display, Formatter},
-    path::PathBuf,
 };
 use heck::SnakeCase;
 use lazy_static::lazy_static;
@@ -51,15 +50,18 @@ impl Default for Options {
 }
 
 /// Shell to run command with
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, Eq, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
 #[serde(rename_all = "snake_case")]
 pub enum ShellType {
     Bash,
     Python,
     Sh,
+    Ruby,
+    Php,
+    Node,
     Cmd,
     PowerShell,
-    Other,
+    Other(String),
 }
 
 lazy_static! {
@@ -70,22 +72,25 @@ impl ShellType {
     /// Returns the program name/path of the shell
     pub fn executable(&self, path: Option<&String>) -> Result<String> {
         if let Some(path) = path {
-            let program = COMMAND_PATTERN.captures(&path).and_then(|cap| {
+            let program = COMMAND_PATTERN.captures(path).and_then(|cap| {
                 cap.name("program").map(|login| login.as_str().to_string())
             });
 
-            return program.with_context(|| {
+            program.with_context(|| {
                 anyhow!("Invalid command: {}", path)
-            });
+            })
         } else {
             Ok(match self {
                 ShellType::Bash => "bash".to_string(),
                 ShellType::Python => "python".to_string(),
                 ShellType::Sh => "sh".to_string(),
+                ShellType::Ruby => "ruby".to_string(),
+                ShellType::Php => "php".to_string(),
+                ShellType::Node => "node".to_string(),
                 ShellType::Cmd => "cmd.exe".to_string(),
                 ShellType::PowerShell => "powershell.exe".to_string(),
-                ShellType::Other => {
-                    return Err(anyhow!("Shell type not supported"));
+                ShellType::Other(shell) => {
+                    return Err(anyhow!("Shell type not supported {}", shell));
                 }
             })
         }
@@ -96,14 +101,17 @@ impl ShellType {
            ShellType::Bash => ["-c".to_string(), program].to_vec(),
            ShellType::Python => ["-c".to_string(), program].to_vec(),
            ShellType::Sh => ["-c".to_string(), program].to_vec(),
+           ShellType::Ruby => ["-e".to_string(), program].to_vec(),
+           ShellType::Php => ["-r".to_string(), program].to_vec(),
+           ShellType::Node => ["-e".to_string(), program].to_vec(),
            ShellType::Cmd => {
                return Err(anyhow!("Sorry! Windows command shell is not supported yet"));
            },
            ShellType::PowerShell => {
                return Err(anyhow!("Sorry! Windows command shell is not supported yet"));
            },
-           ShellType::Other => {
-               return Err(anyhow!("Shell type not supported"));
+           ShellType::Other(shell) => {
+               return Err(anyhow!("Shell type not supported {}", shell));
            }
        })
     }

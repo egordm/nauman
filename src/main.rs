@@ -1,3 +1,6 @@
+#[doc = include_str!("../README.md")]
+
+
 use std::{
     fs,
 };
@@ -12,8 +15,6 @@ use crate::common::LogLevel;
 use anyhow::{anyhow, Context as AnyhowContext, Result};
 use crate::config::LogHandler;
 use crate::logging::pprint;
-
-#[doc = include_str!("../README.md")]
 
 mod common;
 mod config;
@@ -40,16 +41,20 @@ fn parse_key_val<T, U>(s: &str) -> Result<(T, U), Box<dyn Error + Send + Sync + 
 struct Opts {
     /// Path to job yaml file
     job: String,
-    /// A level of verbosity, and can be used multiple times
+    /// A level of verbosity, and can be used multiple times (default: info)
     #[clap(short, long, arg_enum)]
     level: Option<LogLevel>,
-    /// Dry run to check job configuration
+    /// Dry run to check job configuration (default: false)
+    #[clap(long)]
     dry_run: Option<bool>,
-    /// Include ansi colors in output
+    /// Include ansi colors in output (default: true)
+    #[clap(long)]
     ansi: Option<bool>,
-    /// Directory to store logs
+    /// Directory to store logs in (default: current directory)
+    #[clap(long)]
     log_dir: Option<String>,
-    /// Whether to use system environment variables
+    /// Whether to use system environment variables (default: true)
+    #[clap(long)]
     system_env: Option<bool>,
     /// List of env variable overrides
     #[clap(short = 'e', parse(try_from_str = parse_key_val), multiple_occurrences(true), number_of_values = 1)]
@@ -77,7 +82,7 @@ fn run() -> Result<()> {
 
     // Update job
     let filename = PathBuf::from(&opts.job).file_stem().and_then(|f| f.to_str()).unwrap().to_string();
-    job.id = Some(job.id.unwrap_or_else(|| filename));
+    job.id = Some(job.id.unwrap_or(filename));
 
     // Merge options
     // TODO: move this to a separate function

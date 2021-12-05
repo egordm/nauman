@@ -1,0 +1,7 @@
+[target.'cfg(feature = "cargo-clippy")']
+rustflags = [
+    "-Aclippy::invalid_regex",
+    "-Aclippy::collapsible_if",
+    "-Aclippy::match_like_matches_macro",
+    "-Aclippy::ptr_arg",
+]

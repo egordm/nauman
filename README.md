@@ -1,17 +1,26 @@
 <!-- markdownlint-disable -->
 <div align="center">
-    <h1>NauMan</h1>
+    <h1>nauman</h1>
     <p>
         <b>A CI inspired approach for local job automation.</b>
     </p>
-    <p>
-    </p>
-    <br/>
 </div>
+<p align="center">
+  <a href="#features">Features</a> •
+  <a href="#how-to-use">How To Use</a> •
+  <a href="#faq">FAQ</a> •
+  <a href="#installation">Installation</a> •
+  <a href="#usage">Usage</a> •
+  <a href="examples">Examples</a> •
+  <a href="#job-syntax">Job Syntax</a>
+</p>
 <!-- markdownlint-enable -->
 
 
 ## About
+`nauman` is an easy-to-use job automation tool. It arose from a necessity to automate complex task flows while still preserving the ability to monitor and debug them.
+
+It is heavily inspired by simplicity of [Github Actions](https://docs.github.com/en/actions), flexibility of [Fastlane](https://github.com/fastlane/fastlane) and extensibility of [Apache Airflow](https://airflow.apache.org/). This tool aims to bring the best of both to local job automation.
 
 ## Quick Start
 See [Installation](#installation) for how to install just on your computer. Try running `nauman --version` to make sure that it’s installed correctly.
@@ -46,7 +55,8 @@ Greetings egordm!
 
 `nauman` prints the output of each task to the console. The defined tasks run within your default shell and capture all of their output.
 
-## Advanced Examples
+## Examples
+For more examples, see the [examples](examples) directory.
 
 ### Using Hooks
 [Hooks](#hooks) are first class citizens in `nauman`. They represent various events and callbacks that can occur during the execution of a job.
@@ -227,7 +237,184 @@ In the last task we can see that the `NAUMAN_PREV_NAME` and `NAUMAN_PREV_CODE` e
 
 ## Features
 
+### Hook everything
+You can create hooks for all the possible outcomes and events of your job or your task. Create job or task-local hooks like this:
+
+```yaml
+tasks:
+  ...
+  - name: My Task
+    hooks:
+      on_failure:
+        ...
+      on_success:
+        ...
+      before_task:
+        ...
+      after_task:
+        ...
+
+hooks:
+  before_job:
+    ...
+  after_job:
+    ...
+  on_failure:
+    ...
+  on_success:
+    ...
+  before_task:
+    ...
+  after_task:
+    ...
+```
+
+### Flexible Logging
+You can log to single or multiple files, to console and even choose which log streams to used (stdout, stderr, or both).
+
+```yaml
+logging:
+  - name: Log only stdout
+    type: file
+    stdout: true
+    stderr: false
+    output: ./stdout.log
+  - name: Logs split in files per task
+    type: file
+    stdout: true
+    stderr: true
+    split: true
+    output: ./per_task_logs
+  - name: Logs to console
+    type: console
+    stdout: true
+    stderr: true
+  - name: Append output to a shared file
+    type: file
+    stdout: true
+    stderr: true
+    output: /var/log/nauman/my_job.log
+```
+
+### Context variables
+Define more flexible tasks by using context variables.
+
+Currently, following context variables are supported:
+* `NAUMAN_JOB_NAME` - Name of the job
+* `NAUMAN_JOB_ID` - ID of the job
+* `NAUMAN_TASK_NAME` - Name of the current task
+* `NAUMAN_TASK_ID` - ID of the current task
+* `NAUMAN_PREV_NAME` - Name of the previous task
+* `NAUMAN_PREV_ID` - ID of the previous task
+* `NAUMAN_PREV_CODE` - Exit code of the previous task
+
+```yaml
+tasks:
+  ...
+  - name: Use context vars as env vars
+    run: echo $NAUMAN_TASK_NAME
+```
+
+### Configurable task plan
+When one task fails it does not stop the whole job. You can configure the task execution plan to decide how to proceed.
+
+You can choose between the following options:
+* `always` - Always execute the task regardless of prior task status.
+* `prior_success` - Execute the task only if prior task has succeeded.
+* `no_prior_failed` - Execute the task only if no other task has failed.
+
+```yaml
+# Policy can be defined at job level
+policy: no_prior_failed
+
+tasks:
+  ...
+  - name: Always run this task
+    # And overridden at task level
+    policy: always
+```
+
+### Different shell types
+Aside from the default `sh` shell you can use `bash`, `python`, `ruby`, `php` or specify path to your own desired shell.
+
+```yaml
+# Specify a default shell
+shell: bash
+shell_path: /bin/bash
+
+tasks:
+  ...
+  - name: Python task
+    shell: python
+    run: print('Hello World!')
+  - name: Virtual env python
+    shell: python
+    shell_path: '/app/venv/bin/python'
+    run: print('Hello World!')
+  - name: Ruby task
+    shell: ruby
+    run: print('Hello World!')
+  - name: PHP task
+    shell: php
+    run: echo 'Hello World!';
+```
+
+### Dry run
+Want to make sure that your job is configured correctly? You can run your job in dry run mode. This will verify that all tasks are syntactically correct, all shells are usable and warn you about any potential issues (such as missing directories).
+
+```shell
+nauman --dry-run my_job.yml
+```
+
+### Multiline commands
+Sometimes commands can take up more space than a single line. You can use multiline strings to define your commands.
+
+```yaml
+tasks:
+  ...
+  - name: Multiline
+    shell: python
+    run: |
+      import os
+      print(os.environ['NAUMAN_TASK_NAME'])
+```
+
+### Change your working directory
+You can change your working directory by using the `cwd` option.
+
+```yaml
+cwd: /my/project/dir
+
+tasks:
+  ...
+  - name: Change working directory to /my/project/dir/task1
+    cwd: ./task1
+    run: pwd
+```
+
 ## FAQ
+
+### Why use nauman?
+Picture this: you want to periodically run your tool that syncs your favorite movies between services. This can be done with a cron job, but what if you want, to add more dependent tasks (like, also syncing your movie collections)? Easy, create a shell script that runs them both.
+
+Now you want to keep track of their output (for debugging), you want to add health-checks, single process locking, etc. Shell scripts are not the best way to do this and can easily get very messy.
+
+With `nauman` you can create and run a job file that covers it all in a readable and maintainable way.
+
+### When not to use nauman?
+You should not use `nauman` for tasks where you need:
+
+* A makefile:
+  * `nauman` is not meant to be a replacement for makefiles.
+  * It is meant to run a job to automate one single chain of tasks.
+  * It does not support task parallelism, recursion or other complex workflows.
+* A data automation tool:
+  * `nauman` is not meant to be a replacement for data automation tools.
+  * It can be used to chain multiple data processing tasks together.
+  * But it does not provide anything for data loading, data processing or visualization.
+* A CI tool:
+  * `nauman` is not meant to be a replacement for CI tools.
+  * It does not include any CI-specific features such as caching, build uploads or integrations with build tools.
 
 ## Installation
 The binary name for nauman is `nauman`.
@@ -255,20 +442,241 @@ $ ./target/release/nauman --version
 ```
 
 ## Usage
+The usual way to invoke `nauman` is to use the `nauman <job_file>` command. If you want to specify more options or to override some job settings, refer to the below full usage:
+
+<pre>
+<span style="color: #F1FA8C">USAGE:</span>
+    nauman [OPTIONS] &lt;JOB&gt;
+
+<span style="color: #F1FA8C">ARGS:</span>
+    <span style="color: #50FA7B">&lt;JOB&gt;</span>    Path to job yaml file
+
+<span style="color: #F1FA8C">OPTIONS:</span>
+        <span style="color: #50FA7B">--ansi</span> <span style="color: #50FA7B">&lt;ANSI&gt;</span>                Include ansi colors in output (default: true)
+        <span style="color: #50FA7B">--dry-run</span> <span style="color: #50FA7B">&lt;DRY_RUN&gt;</span>          Dry run to check job configuration (default: false)
+    <span style="color: #50FA7B">-e</span> <span style="color: #50FA7B">&lt;ENV&gt;</span>                         List of env variable overrides
+    <span style="color: #50FA7B">-h</span>, <span style="color: #50FA7B">--help</span>                       Print help information
+    <span style="color: #50FA7B">-l</span>, <span style="color: #50FA7B">--level</span> <span style="color: #50FA7B">&lt;LEVEL&gt;</span>              A level of verbosity, and can be used multiple times (default:
+                                     info) [possible values: debug, info, warn, error]
+        <span style="color: #50FA7B">--log-dir</span> <span style="color: #50FA7B">&lt;LOG_DIR&gt;</span>          Directory to store logs in (default: current directory)
+        <span style="color: #50FA7B">--system-env</span> <span style="color: #50FA7B">&lt;SYSTEM_ENV&gt;</span>    Whether to use system environment variables (default: true)
+    <span style="color: #50FA7B">-V</span>, <span style="color: #50FA7B">--version</span>                    Print version information
+</pre>
 
 ## Job Syntax
+The job file is a YAML file that describes the job to be run. It is heavily inspired by [Github Actions Workflow](https://docs.github.com/en/actions/learn-github-actions/workflow-syntax-for-github-actions) files, but contains some differences. Documentation is therefore provided in a similar fashion with `job` as root key (referring to the job file itself).
 
 ### Jobs
 
+#### `job.id`
+The job id is a string that uniquely identifies the job. It is used to identify the job in the logs. By default, it is set to the name of the job file.
+
+#### `job.name`
+The job name is a string that is used to display the job in the logs or other output. By default, it is set to the name of the job file.
+
+#### `job.env`
+The job env is a list of environment variables that will be set before the job is run. They are also used for each job.
+
+```yaml
+env:
+  FOO: bar
+  BAZ: qux
+```
+
+#### `job.cwd`
+The job cwd is a string that is used to set the current working directory before the job is run. All the other relative paths used in the job are relative to this directory.
+
 ### Tasks
+
+#### `job.tasks.<task>.id`
+The task id is a string that uniquely identifies the task. It is used to identify the task in the logs. By default, it is set as transformed task name or command (run) name.
+
+#### `job.tasks.<task>.name`
+The task name is a string that is used to display the task in the logs or other output.
+
+#### `job.tasks.<task>.env`
+The task env is a list of environment variables that will be set before the task is run. They are also used for the task and merged with all the other env variables.
+
+```yaml
+tasks:
+  - name: run
+    env:
+      FOO: bar
+      BAZ: qux
+```
+
+#### `job.tasks.<task>.cwd`
+The task cwd is a string that is used to set the current working directory before the task is run. All the other relative paths used in the task are relative to this directory.
+
+#### `job.tasks.<task>.run`
+The task `run` argument is a string that refers to a command to run. It should be a program valid within the given shell.
+
+```yaml
+tasks:
+  - name: single line
+    run: echo "Hello World"
+  - name: multiline
+    run: |
+      echo "Hello World"
+      echo "Hello World"
+```
+
+#### `job.tasks.<task>.shell`
+The shell is a string that is used to specify the shell to use for the tasks.
+
+The default is `sh`. But, you can choose any of the following:
+
+* `bash` - Bash shell.
+* `python` - Python shell.
+* `ruby` - Ruby shell.
+* `php` - Php shell.
+* `node` - Node shell.
+* `cmd` - Windows command shell.
+* `powershell` - PowerShell shell.
+
+This option refers only to shell type. If you want to use a specific shell, you can use the `shell_path` option.
+
+
+#### `job.tasks.<task>.shell_path`
+The shell path is a string that is used to specify the path to the shell to use for the tasks. If not specified, the shell is determined by the ones available in the system.
 
 ### Hooks
 
+#### `job.hooks`
+The global hooks are a list of hooks that apply to all the tasks. Global before hooks have always higher precedence while after hooks have the lowest precedence when task specific hooks are involved. Each hook is list of tasks and can be one of the following:
+
+```yaml
+hooks:
+  before_job:
+    ...
+  after_job:
+    ...
+  on_failure:
+    ...
+  on_success:
+    ...
+  before_task:
+    ...
+  after_task:
+    ...
+```
+
+#### `job.tasks.<task>.hooks`
+The task-specific hooks are a list of hooks that apply to the specified task. Each hook is list of tasks and can be one of the following:
+
+```yaml
+tasks:
+  - name: My Task
+    hooks:
+      on_failure:
+        ...
+      on_success:
+        ...
+      before_task:
+        ...
+      after_task:
+        ...
+```
+
 ### Logging
 
+#### `job.logging.<log>.type`
+The log type is a string that is used to specify the type of the log. It is one of the following:
+
+* `console` - Log to the console.
+* `file` - Log to a file.
+
+#### `job.logging.<log>.name`
+The logging name is a string that is used to display the logging option in the logs or other output.
+
+#### `job.logging.<log>.stdout`
+If set to `true`, the standard output of the task will be captured and logged.
+
+Default: `true`
+
+#### `job.logging.<log>.stderr`
+If set to `true`, the standard error of the task will be captured and logged.
+
+Default: `true`
+
+#### `job.logging.<log>.hooks`
+If set to `true`, the standard output and error of the hook tasks will also be captured and logged.
+
+Default: `true`
+
+#### `job.logging.<log>.internal`
+If set to `true`, the log output of `nauman` will also be captured and logged.
+
+Default: `true`
+
+#### File logging
+#### `job.logging.<log>.file`
+Refers to the file path of the file to store the log into.
+
+If `split` is set to `true`, this file should refer to a directory. The log will be stored in a file named after the task id within this directory.
+
+If a relative path is given, then it is relative to the log directory.
+
+#### `job.logging.<log>.split`
+If set to `true`, the log will be stored in a file named after the task id within the specified directory.
+
+#### Console logging
+none
+
 ### Global Options
+#### `job.options.shell`
+The shell is a string that is used to specify the shell to use for the tasks.
+
+The default is `sh`. But, you can choose any of the following:
+
+* `bash` - Bash shell.
+* `python` - Python shell.
+* `ruby` - Ruby shell.
+* `php` - Php shell.
+* `node` - Node shell.
+* `cmd` - Windows command shell.
+* `powershell` - PowerShell shell.
+
+This option refers only to shell type. If you want to use a specific shell, you can use the `shell_path` option.
+
+#### `job.options.shell_path`
+The shell path is a string that is used to specify the path to the shell to use for the tasks. If not specified, the shell is determined by the ones available in the system.
+
+#### `job.options.dry_run`
+If set to `true`, the job will always execute in dry run mode.
+
+#### `job.options.ansi`
+If set to `false`, the job will not output ANSI escape codes.
+
+#### `job.options.log_level`
+The log level is a string that is used to specify the log level. It is one of the following:
+
+* `debug` - Debug level.
+* `info` - Info level.
+* `warn` - Warn level.
+* `error` - Error level.
+
+#### `job.options.log_dir`
+The log directory is a string that is used to specify the directory to store the logs. If not specified, the logs will be stored in the current working directory.
+
+#### `job.options.system_env`
+If set to `true`, the job will use the system environment variables. If set to `false`, the job will only use the environment variables explicitly defined in the job, task or in the cli.
 
 ### Execution Policies
+
+#### `job.policy`
+The job policy is the global execution policy enforced for all the tasks unless overridden. It is a string that can be one of the following:
+
+* `always` - Always execute the task regardless of prior task status.
+* `prior_success` - Execute the task only if prior task has succeeded.
+* `no_prior_failed` - Execute the task only if no other task has failed.
+
+#### `job.tasks.<task>.policy`
+The task policy is the execution policy enforced for the task. It is a string that can be one of the following:
+
+* `always` - Always execute the task regardless of prior task status.
+* `prior_success` - Execute the task only if prior task has succeeded.
+* `no_prior_failed` - Execute the task only if no other task has failed.
 
 ## Contributing
 

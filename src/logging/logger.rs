@@ -10,7 +10,6 @@ use crate::{
 use anyhow::{Result};
 use colored::{Colorize};
 use crate::common::LogLevel;
-use crate::config::ShellType;
 use crate::execution::ExecutionResult;
 
 pub trait LogAction {
@@ -109,7 +108,7 @@ impl Logger {
         &mut self,
         context: &ExecutionContext,
     ) -> Result<()> {
-        let spec = LoggingSpec::from_config(&self.config, &context)?;
+        let spec = LoggingSpec::from_config(&self.config, context)?;
         self.output = MultiOutputStream::from_spec(spec);
         Ok(())
     }

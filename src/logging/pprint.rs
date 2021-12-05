@@ -21,7 +21,7 @@ pub fn command(text: &str) -> colored::ColoredString {
 }
 
 pub fn error(text: &str) -> colored::ColoredString {
-    format!("{}", text).red()
+    text.red()
 }
 
 pub fn task_error(name: &str, status: i32, duration: Option<&std::time::Duration>) -> colored::ColoredString {
@@ -74,8 +74,4 @@ pub fn task_aborted(name: &str, policy: ExecutionPolicy) -> colored::ColoredStri
             ).red()
         },
     }
-}
-
-pub fn task_duration(name: &str, duration: std::time::Duration) -> colored::ColoredString {
-    format!("Task \"{name}\" took {duration}s to execute", name=name, duration=duration.as_secs()).blue()
 }

@@ -183,7 +183,7 @@ impl ExecutableHandler for Shell {
         let cwd = resolve_cwd(&context.cwd, command.cwd.as_ref());
 
         // Build shell
-        let shell = self.shell.unwrap_or(context.options.shell);
+        let shell = self.shell.clone().unwrap_or_else(|| context.options.shell.clone());
         let shell_path = self.shell_path.as_ref().or_else(|| {
             if shell == context.options.shell {
                 context.options.shell_path.as_ref()
@@ -196,7 +196,7 @@ impl ExecutableHandler for Shell {
 
         // Announce execution
         logger.log_action(ActionShell {
-            handler: &self,
+            handler: self,
             env: &env,
             cwd: &cwd,
             shell_program: &shell_program,
@@ -252,8 +252,13 @@ pub fn execute_command(
 }
 
 pub const ENV_PREV_NAME: &str = "NAUMAN_PREV_NAME";
-pub const ENV_PREV_CODE: &str = "NAUMAN_PREV_CODE";
 pub const ENV_PREV_ID: &str = "NAUMAN_PREV_ID";
+pub const ENV_PREV_CODE: &str = "NAUMAN_PREV_CODE";
+pub const ENV_JOB_NAME: &str = "NAUMAN_JOB_NAME";
+pub const ENV_JOB_ID: &str = "NAUMAN_JOB_ID";
+pub const ENV_TASK_NAME: &str = "NAUMAN_TASK_NAME";
+pub const ENV_TASK_ID: &str = "NAUMAN_TASK_ID";
+
 
 /// Executor responsible for executing a flow.
 pub struct Executor<'a> {
@@ -289,6 +294,10 @@ impl<'a> Executor<'a> {
         );
         std::fs::create_dir_all(&self.context.log_dir)?;
 
+        // Define global context variables
+        self.context.env.insert(ENV_JOB_NAME.to_string(), self.flow.id.clone());
+        self.context.env.insert(ENV_JOB_ID.to_string(), self.flow.id.clone());
+
         // Loop through all the commands and store the results
         let mut results = Vec::new();
         let mut flow_iter = self.flow.iter();
@@ -311,7 +320,7 @@ impl<'a> Executor<'a> {
     ) -> Result<ExecutionResult> {
         // Set up the context for the current command
         self.context.current = Some((command_id.clone(), command.clone()));
-        self.context.focus = focus_id.map(|id| id.clone());
+        self.context.focus = focus_id.cloned();
         self.context.will_execute = match command.policy {
             ExecutionPolicy::NoPriorFailed => self.context.state != ExecutionState::Failed,
             ExecutionPolicy::PriorSuccess => self.context.previous.as_ref().map(|r| r.is_success()).unwrap_or(true),
@@ -331,9 +340,11 @@ impl<'a> Executor<'a> {
             if let Some(previous) = self.context.previous.as_ref() {
                 let prev_command = self.flow.command(&previous.command_id).expect("Previous command not found");
                 self.context.env.insert(ENV_PREV_CODE.to_string(), previous.exit_code.to_string());
-                self.context.env.insert(ENV_PREV_ID.to_string(), previous.command_id.to_string());
+                self.context.env.insert(ENV_PREV_ID.to_string(), previous.command_id.clone());
                 self.context.env.insert(ENV_PREV_NAME.to_string(), prev_command.name.clone());
             }
+            self.context.env.insert(ENV_TASK_NAME.to_string(), command.name.clone());
+            self.context.env.insert(ENV_TASK_ID.to_string(), command_id.clone());
 
             // Execute the actual command
             execute_command(command, &mut self.context, logger)?

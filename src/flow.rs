@@ -66,8 +66,10 @@ pub struct Routine {
 /// A flow is a collection of routines and commands representing a job
 #[derive(Debug, Clone)]
 pub struct Flow {
-    /// The flow's name.
+    /// The flow's id.
     pub id: String,
+    /// The flow's name.
+    pub name: String,
     /// List of tasks with corresponding command ids
     pub dependencies: Dependencies,
     /// List of routines with corresponding routine ids
@@ -123,22 +125,20 @@ impl FlowBuilder {
         prefix: &str,
         is_hook: bool,
     ) -> Result<Routine> {
-        let mut counter = 0;
         let mut commands = Vec::new();
 
-        for task in tasks {
+        for (counter, task) in tasks.iter().enumerate() {
             let task_name = task.get_name();
             let task_id = task.id.clone()
                 .unwrap_or_else(|| generate_id(&task_name, counter, prefix));
 
             // TODO: handle this in a more verbose way
             let command = self.parse_command(task, &task_id, is_hook)?;
-            if let Some(_) = self.dependencies.insert(task_id.clone(), command) {
-                return Err(anyhow!("Task {} has a duplicate id", task_name));
+            if let Some(command) = self.dependencies.insert(task_id.clone(), command) {
+                return Err(anyhow!("Task \"{}\" has a duplicate id. Task \"{}\" has the same id", task_name, command.name));
             }
 
             commands.push(task_id);
-            counter += 1;
         }
 
         Ok(Routine { commands,  is_hook })
@@ -161,7 +161,7 @@ impl FlowBuilder {
             let routine_id = format!("{}{}", prefix, &hook);
             let routine = self.parse_routine(tasks, &routine_id, true)?;
             self.routines.insert(routine_id.clone(), routine);
-            result.insert(hook.clone(), routine_id);
+            result.insert(*hook, routine_id);
         }
 
         Ok(result)
@@ -183,7 +183,7 @@ impl FlowBuilder {
         Ok(Command {
             name: task.get_name(),
             handler: task.handler.clone(),
-            env: task.env.clone().unwrap_or(Env::default()),
+            env: task.env.clone().unwrap_or_default(),
             cwd: task.cwd.clone(),
             is_hook,
             hooks,
@@ -215,6 +215,7 @@ impl FlowBuilder {
 
         Ok(Flow {
             id,
+            name: job.name.clone(),
             dependencies: self.dependencies,
             routines: self.routines,
             env: job.env.clone().unwrap_or_default(),
@@ -298,7 +299,7 @@ impl <'a> FlowIterator<'a> {
     fn get_command(&self, head: &StackItem) -> Option<(&CommandId, &Command)> {
         let routine = self.routine(&head.routine);
         let command_id = routine.commands.get(head.position as usize).expect("Command not found");
-        let command = self.command(&command_id);
+        let command = self.command(command_id);
         Some((command_id, command))
     }
 
@@ -381,11 +382,11 @@ impl <'a> Iterator for FlowIterator<'a> {
                 let (command_id, command) = self.get_command(&item).expect("Command not found");
                 let command_id = command_id.clone();
                 if let Some(hook_id) = command.hooks.get(&Hook::BeforeTask).cloned() {
-                    self.push(hook_id.clone(), Some(command_id.clone()));
+                    self.push(hook_id, Some(command_id.clone()));
                 }
                 // Add a global hook
                 if let Some(hook_id) = self.flow.hooks.get(&Hook::BeforeTask) {
-                    self.push(hook_id.clone(), Some(command_id.clone()));
+                    self.push(hook_id.clone(), Some(command_id));
                 }
                 self.next()
             }
@@ -403,7 +404,7 @@ impl <'a> Iterator for FlowIterator<'a> {
                     }
                     // Add a task-specific hook
                     if let Some(hook_id) = command.hooks.get(&Hook::AfterTask).cloned() {
-                        self.push(hook_id.clone(), Some(command_id.clone()));
+                        self.push(hook_id, Some(command_id.clone()));
                     }
                 }
 

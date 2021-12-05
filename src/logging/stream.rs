@@ -76,6 +76,7 @@ impl std::io::Write for Null {
     }
 }
 
+#[allow(dead_code)]
 pub enum OutputStream {
     Stdout(Stdout),
     Stderr(Stderr),
@@ -109,12 +110,14 @@ impl OutputStream {
         })
     }
 
+    #[allow(dead_code)]
     pub fn new_writer(stream: Box<dyn Write + Send>) -> Self {
         OutputStream::Writer(Writer {
             stream: Mutex::new(stream),
         })
     }
 
+    #[allow(dead_code)]
     pub fn new_null() -> Self {
         OutputStream::Null(Null)
     }
@@ -160,6 +163,7 @@ pub trait MultiWriter {
     fn flush_stream(&mut self, stream: InputStream) -> io::Result<()>;
 }
 
+#[derive(Default)]
 pub struct MultiOutputStream {
     pub outputs: Vec<(InputStream, OutputStream)>,
 }

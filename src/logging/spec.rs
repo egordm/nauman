@@ -13,17 +13,11 @@ pub enum InputStream {
 
 impl InputStream {
     pub fn is_stdout(&self) -> bool {
-        match self {
-            InputStream::Stderr => false,
-            _ => true,
-        }
+        !matches!(self, InputStream::Stderr)
     }
 
     pub fn is_stderr(&self) -> bool {
-        match self {
-            InputStream::Stdout => false,
-            _ => true,
-        }
+        !matches!(self, InputStream::Stdout)
     }
 
     pub fn is_compatible(&self, other: Self) -> bool {
@@ -83,13 +77,13 @@ impl PipeSpec {
                     file.push(format!("{}.log", filename));
                 }
 
-                return Ok(vec![Self {
+                Ok(vec![Self {
                     input,
                     output: OutputStreamSpec::File(FileOutputSpec {
                         file,
                         append: true,
                     }),
-                }]);
+                }])
             },
             LogHandlerType::Console => {
                 let mut result = Vec::new();
@@ -108,7 +102,7 @@ impl PipeSpec {
                     });
                 }
 
-                return Ok(result);
+                Ok(result)
             },
         }
     }

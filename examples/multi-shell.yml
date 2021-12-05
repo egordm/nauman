@@ -1,0 +1,11 @@
+name: Example Job Using Multiple Shells
+
+tasks:
+  - run: print("Hello World!")
+    shell: python
+  - run: print("Hello World!")
+    shell: ruby
+  - run: console.log("Hello World!")
+    shell: node
+  - run: echo "Hello World!\n";
+    shell: php
