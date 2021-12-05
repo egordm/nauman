@@ -1,0 +1,22 @@
+name: Example Job Using Health Checks
+policy: always
+
+tasks:
+  - name: Run a successful program
+    run: sleep 2 && echo "Success!"
+    hooks:
+      on_success:
+        - run: curl -fsS -m 10 --retry 5 -o /dev/null https://hc-ping.com/fb4c4863-a7f1-44f1-8298-3baabec653d4
+  - name: Run a failing program
+    run: sleep 2 && exit 1
+    hooks:
+      on_success:
+        - run: curl -fsS -m 10 --retry 5 -o /dev/null https://hc-ping.com/0178d446-9b50-4158-b50d-7df098945c81
+      on_failure:
+        - name: Send failing status code to Health Check
+          run: curl -fsS -m 10 --retry 5 -o /dev/null https://hc-ping.com/0178d446-9b50-4158-b50d-7df098945c81/$NAUMAN_PREV_CODE
+
+hooks:
+  after_job:
+    - name: On completion of the job, ping a health check
+      run: curl -fsS -m 10 --retry 5 -o /dev/null https://hc-ping.com/fb4c4863-a7f1-44f1-8298-3baabec653d4

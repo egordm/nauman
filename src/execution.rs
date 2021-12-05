@@ -13,7 +13,6 @@ use crate::{
     flow::CommandId,
     logging::{MultiOutputStream, MultiWriter},
     common::Env,
-    Logger,
     config,
     config::{ExecutionPolicy, Shell, TaskHandler},
     logging::{ActionShell, InputStream},
@@ -22,7 +21,7 @@ use crate::{
 };
 use anyhow::{Context as AnyhowContext, Result};
 use chrono::{Local};
-use crate::logging::ActionCommandEnd;
+use crate::logging::{ActionCommandEnd, Logger};
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub enum ExecutionState {
@@ -252,6 +251,7 @@ pub fn execute_command(
     command.handler.execute(command, context, logger)
 }
 
+pub const ENV_PREV_NAME: &str = "NAUMAN_PREV_NAME";
 pub const ENV_PREV_CODE: &str = "NAUMAN_PREV_CODE";
 pub const ENV_PREV_ID: &str = "NAUMAN_PREV_ID";
 
@@ -329,8 +329,10 @@ impl<'a> Executor<'a> {
             // Prepare context
             // TODO: should this be moved to context preparation?
             if let Some(previous) = self.context.previous.as_ref() {
+                let prev_command = self.flow.command(&previous.command_id).expect("Previous command not found");
                 self.context.env.insert(ENV_PREV_CODE.to_string(), previous.exit_code.to_string());
                 self.context.env.insert(ENV_PREV_ID.to_string(), previous.command_id.to_string());
+                self.context.env.insert(ENV_PREV_NAME.to_string(), prev_command.name.clone());
             }
 
             // Execute the actual command

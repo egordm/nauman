@@ -6,10 +6,10 @@ use crate::{
     logging::{MultiOutputStream, LoggingSpec, pprint},
     common::Env,
     flow::Command,
-    LogLevel
 };
 use anyhow::{Result};
 use colored::{Colorize};
+use crate::common::LogLevel;
 use crate::config::ShellType;
 use crate::execution::ExecutionResult;
 

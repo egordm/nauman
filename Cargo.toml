@@ -1,10 +1,14 @@
 [package]
 name = "nauman"
-version = "0.1.0"
+version = "1.0.0"
+edition = "2021"
 authors = ["Egor Dmitriev <egordmitriev2@gmail.com>"]
-edition = "2018"
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+description = "A CI inspired approach for local job automation"
+readme = "README.md"
+repository = "https://github.com/EgorDm/nauman/"
+license = "MIT"
+categories = ["command-line-utilities", "development-tools"]
+keywords = ["command-line", "task", "runner", "development", "utility"]
 
 [dependencies]
 serde = { version = "1.0", features = ["derive"] }

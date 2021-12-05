@@ -1,0 +1,7 @@
+name: Hello World!
+
+tasks:
+  - name: Hello World!
+    run: echo "Hello World!"
+  - name: Greeting
+    run: echo "Greetings ${USER}!"

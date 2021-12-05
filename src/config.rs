@@ -10,8 +10,8 @@ use anyhow::{anyhow, Context as AnyhowContext, Result};
 use regex::Regex;
 use crate::{
     common::Env,
-    LogLevel,
 };
+use crate::common::LogLevel;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Options {
@@ -129,6 +129,12 @@ pub struct Shell {
     pub run: String,
 }
 
+impl Display for Shell {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.run)
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum TaskHandler {
@@ -136,12 +142,21 @@ pub enum TaskHandler {
     Shell(Shell),
 }
 
+impl Display for TaskHandler {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            TaskHandler::Shell(shell) => write!(f, "{}", shell),
+        }
+    }
+}
+
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Task {
     /// The identifier of the task.
     pub id: Option<String>,
     /// The name of the task.
-    pub name: String,
+    pub name: Option<String>,
     /// Handler for the task.
     #[serde(flatten)]
     pub handler: TaskHandler,
@@ -153,6 +168,12 @@ pub struct Task {
     pub hooks: Option<Hooks>,
     /// Execution policy for the task.
     pub policy: Option<ExecutionPolicy>,
+}
+
+impl Task {
+    pub fn get_name(&self) -> String {
+        self.name.clone().unwrap_or_else(|| self.handler.to_string())
+    }
 }
 
 /// List of tasks
@@ -205,6 +226,8 @@ pub enum LogHandlerType {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LogHandler {
+    /// The name of the log handler.
+    pub name: Option<String>,
     /// The type of the log handler.
     #[serde(flatten)]
     pub handler: LogHandlerType,
@@ -212,6 +235,22 @@ pub struct LogHandler {
     #[serde(flatten)]
     pub options: LogOptions,
 }
+
+impl LogHandler {
+    pub fn default_console() -> Self {
+        Self {
+            name: None,
+            handler: LogHandlerType::Console,
+            options: LogOptions {
+                stdout: true,
+                stderr: true,
+                hooks: true,
+                internal: true,
+            },
+        }
+    }
+}
+
 
 /// List of log handlers
 pub type LogHandlers = Vec<LogHandler>;
@@ -277,9 +316,9 @@ pub struct Job {
     /// List of tasks for the job.
     pub tasks: Tasks,
     /// List of global hooks.
-    pub hooks: HashMap<Hook, Tasks>,
+    pub hooks: Option<Hooks>,
     /// List of log handlers for the job.
-    pub logging: LogHandlers,
+    pub logging: Option<LogHandlers>,
     /// Global execution policy for the job.
     #[serde(default)]
     pub policy: ExecutionPolicy,

@@ -1,0 +1,17 @@
+name: Example Environment variables
+
+env:
+  PING_CMD: curl -fsS -m 10 --retry 5 -o /dev/null https://hc-ping.com/
+  CHECK_1: fb4c4863-a7f1-44f1-8298-3baabec653d4
+
+tasks:
+  - name: Job env var
+    run: echo $PING_CMD$CHECK_1
+  - name: Task env var
+    run: echo $PING_CMD$CHECK_1
+    env:
+      CHECK_1: fb4c4863-a7f1-44f1-8298-3baabec653d4
+  - name: System env var
+    run: echo $PING_CMD$CHECK_2
+  - name: Built-in env vars
+    run: echo "Previous task \"$NAUMAN_PREV_NAME\" finished with status $NAUMAN_PREV_CODE"

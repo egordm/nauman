@@ -1,0 +1,26 @@
+name: Example Job Using Logs
+options:
+  log_dir: ./logs
+
+tasks:
+  - name: Print Hello World to stdout
+    run: echo "Hello World!"
+  - name: Print Hello World to stderr
+    run: echo "Hello World!" >&2
+
+logging:
+  - type: file
+    name: Print stdout to a file
+    stdout: true
+    stderr: false
+    output: ./stdout.log
+  - type: file
+    name: Print stderr to a file
+    stdout: false
+    stderr: true
+    output: ./stderr.log
+  - type: file
+    name: Print both stdout and stderr to separate files per task
+    split: true
+    output: ./separate_logs
+  - type: console

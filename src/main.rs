@@ -1,6 +1,7 @@
 use std::{
     fs,
 };
+use std::error::Error;
 use std::path::PathBuf;
 use crate::{
     execution::{Executor},
@@ -9,14 +10,30 @@ use crate::{
 use clap::{Parser};
 use crate::common::LogLevel;
 use anyhow::{anyhow, Context as AnyhowContext, Result};
+use crate::config::LogHandler;
 use crate::logging::pprint;
 
+#[doc = include_str!("../README.md")]
 
 mod common;
 mod config;
 mod logging;
 mod flow;
 mod execution;
+
+/// Parse a single key-value pair
+fn parse_key_val<T, U>(s: &str) -> Result<(T, U), Box<dyn Error + Send + Sync + 'static>>
+    where
+        T: std::str::FromStr,
+        T::Err: Error + Send + Sync + 'static,
+        U: std::str::FromStr,
+        U::Err: Error + Send + Sync + 'static,
+{
+    let pos = s
+        .find('=')
+        .ok_or_else(|| format!("invalid KEY=value: no `=` found in `{}`", s))?;
+    Ok((s[..pos].parse()?, s[pos + 1..].parse()?))
+}
 
 #[derive(Parser)]
 #[clap(version = "1.0", author = "Egor D. <egordmitriev2@gmail.com>")]
@@ -34,6 +51,9 @@ struct Opts {
     log_dir: Option<String>,
     /// Whether to use system environment variables
     system_env: Option<bool>,
+    /// List of env variable overrides
+    #[clap(short = 'e', parse(try_from_str = parse_key_val), multiple_occurrences(true), number_of_values = 1)]
+    env: Vec<(String, String)>,
 }
 
 fn main() {
@@ -77,10 +97,20 @@ fn run() -> Result<()> {
     if let Some(system_env) = opts.system_env {
         options.system_env = system_env;
     }
+    if let Some(env) = job.env.as_mut() {
+        env.extend(opts.env);
+    } else {
+        job.env = Some(opts.env.iter().cloned().collect());
+    };
 
     // Setup the logger
     colored::control::set_override(options.ansi);
-    let mut logger = Logger::new(job.logging.clone(), options.log_level);
+    let logging_handlers = if let Some(handlers) = job.logging.clone() {
+        handlers
+    } else {
+        vec![LogHandler::default_console()]
+    };
+    let mut logger = Logger::new(logging_handlers, options.log_level);
 
     // Parse the job to a flow
     let flow = flow::Flow::parse(&job)

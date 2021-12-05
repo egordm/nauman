@@ -86,6 +86,11 @@ impl Flow {
         FlowBuilder::new().parse_flow(job)
     }
 
+    /// Get command by id
+    pub fn command(&self, command_id: &CommandId) -> Option<&Command> {
+        self.dependencies.get(command_id)
+    }
+
     /// Iterates through flow's commands including hook logic
     pub fn iter(&self) -> FlowIterator {
         FlowIterator::new(self)
@@ -122,13 +127,14 @@ impl FlowBuilder {
         let mut commands = Vec::new();
 
         for task in tasks {
+            let task_name = task.get_name();
             let task_id = task.id.clone()
-                .unwrap_or_else(|| generate_id(&task.name, counter, prefix));
+                .unwrap_or_else(|| generate_id(&task_name, counter, prefix));
 
             // TODO: handle this in a more verbose way
             let command = self.parse_command(task, &task_id, is_hook)?;
             if let Some(_) = self.dependencies.insert(task_id.clone(), command) {
-                return Err(anyhow!("Task {} has a duplicate id", task.name));
+                return Err(anyhow!("Task {} has a duplicate id", task_name));
             }
 
             commands.push(task_id);
@@ -175,7 +181,7 @@ impl FlowBuilder {
         };
 
         Ok(Command {
-            name: task.name.clone(),
+            name: task.get_name(),
             handler: task.handler.clone(),
             env: task.env.clone().unwrap_or(Env::default()),
             cwd: task.cwd.clone(),
@@ -190,9 +196,20 @@ impl FlowBuilder {
         mut self,
         job: &config::Job,
     ) -> Result<Flow> {
+        // Set the job identifier if not yet set (usually the filename unless it is overridden)
         let id = job.id.clone().unwrap_or_else(|| format_identifier(&job.name));
+
+        // Set the global execution policy
         self.policy = job.policy;
-        let hooks = self.parse_hooks(&job.hooks, "", false)?;
+
+        // Parse the global hooks
+        let hooks = if let Some(hooks) = &job.hooks {
+            self.parse_hooks(hooks, "", false)?
+        } else {
+            HashMap::new()
+        };
+
+        // Parse the main routine and add it to the list of routines
         let main_routine = self.parse_routine(&job.tasks, "", false)?;
         self.routines.insert(MAIN_ROUTINE_NAME.to_string(), main_routine);
 
