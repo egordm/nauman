@@ -19,6 +19,11 @@ tasks:
   - name: Show last 3 commits
     run: git log -n 3
     cwd: tmp/rockstar
+  - name: Run a python script
+    run: |
+      print('Hello World')
+      print('This is a python script')
+    shell: python
   - name: Setup satriani compiler
     run: |
       yarn install

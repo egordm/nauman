@@ -1,24 +1,25 @@
-use std::collections::HashMap;
-use std::fmt::{Display, Formatter};
+use std::{
+    collections::HashMap,
+    fmt::{Display, Formatter},
+    path::PathBuf,
+};
 use heck::SnakeCase;
+use lazy_static::lazy_static;
 use serde::{Serialize, Deserialize};
-use crate::common::Env;
-use crate::LogLevel;
-
-/// The default shell which is used to run commands.
-fn default_shell() -> String {
-    if cfg!(target_os = "windows") {
-        "cmd.exe".to_string()
-    } else {
-        "sh".to_string()
-    }
-}
+use anyhow::{anyhow, Context as AnyhowContext, Result};
+use regex::Regex;
+use crate::{
+    common::Env,
+    LogLevel,
+};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Options {
     /// The default shell which is used to run commands.
-    #[serde(default = "default_shell")]
-    pub shell: String,
+    #[serde(default)]
+    pub shell: ShellType,
+    /// The path to specified shell which is used to run commands.
+    pub shell_path: Option<String>,
     /// In dry-run mode, the commands are not executed.
     #[serde(default = "false_default")]
     pub dry_run: bool,
@@ -38,7 +39,8 @@ pub struct Options {
 impl Default for Options {
     fn default() -> Self {
         Self {
-            shell: default_shell(),
+            shell: ShellType::default(),
+            shell_path: None,
             dry_run: false_default(),
             ansi: true_default(),
             log_level: LogLevel::default(),
@@ -48,10 +50,81 @@ impl Default for Options {
     }
 }
 
+/// Shell to run command with
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Eq, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum ShellType {
+    Bash,
+    Python,
+    Sh,
+    Cmd,
+    PowerShell,
+    Other,
+}
+
+lazy_static! {
+    static ref COMMAND_PATTERN: Regex = Regex::new(r"^(?<program>((\\[ ])|[A-z0-9/.])+)( +(?<args>.*))?( +|$)").unwrap();
+}
+
+impl ShellType {
+    /// Returns the program name/path of the shell
+    pub fn executable(&self, path: Option<&String>) -> Result<String> {
+        if let Some(path) = path {
+            let program = COMMAND_PATTERN.captures(&path).and_then(|cap| {
+                cap.name("program").map(|login| login.as_str().to_string())
+            });
+
+            return program.with_context(|| {
+                anyhow!("Invalid command: {}", path)
+            });
+        } else {
+            Ok(match self {
+                ShellType::Bash => "bash".to_string(),
+                ShellType::Python => "python".to_string(),
+                ShellType::Sh => "sh".to_string(),
+                ShellType::Cmd => "cmd.exe".to_string(),
+                ShellType::PowerShell => "powershell.exe".to_string(),
+                ShellType::Other => {
+                    return Err(anyhow!("Shell type not supported"));
+                }
+            })
+        }
+    }
+
+    pub fn args(&self, _path: Option<&String>, program: String) -> Result<Vec<String>> {
+       Ok( match self {
+           ShellType::Bash => ["-c".to_string(), program].to_vec(),
+           ShellType::Python => ["-c".to_string(), program].to_vec(),
+           ShellType::Sh => ["-c".to_string(), program].to_vec(),
+           ShellType::Cmd => {
+               return Err(anyhow!("Sorry! Windows command shell is not supported yet"));
+           },
+           ShellType::PowerShell => {
+               return Err(anyhow!("Sorry! Windows command shell is not supported yet"));
+           },
+           ShellType::Other => {
+               return Err(anyhow!("Shell type not supported"));
+           }
+       })
+    }
+}
+
+impl Default for ShellType {
+    fn default() -> Self {
+        if cfg!(target_os = "windows") {
+            ShellType::Cmd
+        } else {
+            ShellType::Sh
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Shell {
+    /// The shell type.
+    pub shell: Option<ShellType>,
     /// The shell which is used to run commands.
-    pub shell: Option<String>,
+    pub shell_path: Option<String>,
     /// Shell program that is passed to the shell.
     pub run: String,
 }

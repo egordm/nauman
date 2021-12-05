@@ -7,6 +7,7 @@ use std::{
     os::unix::io::{AsRawFd, FromRawFd},
 };
 use std::collections::HashMap;
+use std::time::Instant;
 use crate::{
     flow,
     flow::CommandId,
@@ -16,10 +17,12 @@ use crate::{
     config,
     config::{ExecutionPolicy, Shell, TaskHandler},
     logging::{ActionShell, InputStream},
-    flow::Command
+    flow::Command,
+    logging::ActionCommandStart
 };
 use anyhow::{Context as AnyhowContext, Result};
 use chrono::{Local};
+use crate::logging::ActionCommandEnd;
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub enum ExecutionState {
@@ -30,8 +33,10 @@ pub enum ExecutionState {
 #[derive(Debug, Clone)]
 pub struct ExecutionResult {
     pub command_id: CommandId,
+    pub focus_id: Option<CommandId>,
     pub exit_code: i32,
     pub aborted: bool,
+    pub duration: Option<std::time::Duration>,
 }
 
 impl ExecutionResult {
@@ -173,23 +178,38 @@ impl ExecutableHandler for Shell {
 
         // Build cwd
         let cwd = resolve_cwd(&context.cwd, command.cwd.as_ref());
-        let shell = context.options.shell.clone();
+
+        // Build shell
+        let shell = self.shell.unwrap_or(context.options.shell);
+        let shell_path = self.shell_path.as_ref().or_else(|| {
+            if shell == context.options.shell {
+                context.options.shell_path.as_ref()
+            } else {
+                None
+            }
+        });
+        let shell_program = shell.executable(shell_path)?;
+        let shell_args = shell.args(shell_path, self.run.clone())?;
 
         // Announce execution
         logger.log_action(ActionShell {
             handler: &self,
             env: &env,
             cwd: &cwd,
-            shell: &shell,
+            shell_program: &shell_program,
+            shell_args: shell_args.as_slice(),
         })?;
+
+        // Time execution
+        let now = Instant::now();
 
         let exit_code = if context.options.dry_run {
             // Always succeed on dry run
             0
         } else {
             // Build command
-            let mut child = std::process::Command::new(shell)
-                .args(&["-c", &self.run])
+            let mut child = std::process::Command::new(shell_program)
+                .args(&shell_args)
                 .envs(env)
                 .current_dir(cwd)
                 .stdout(Stdio::piped())
@@ -204,8 +224,10 @@ impl ExecutableHandler for Shell {
 
         Ok(ExecutionResult {
             command_id: context.current_command_id().clone(),
+            focus_id: context.focus.clone(),
             exit_code,
             aborted: false,
+            duration: Some(now.elapsed()),
         })
     }
 }
@@ -289,9 +311,12 @@ impl<'a> Executor<'a> {
             ExecutionPolicy::PriorSuccess => self.context.previous.as_ref().map(|r| r.is_success()).unwrap_or(true),
             ExecutionPolicy::Always => true
         };
-        logger.switch(command, &self.context)?;
+        logger.switch(&self.context)?;
 
         let result = if self.context.will_execute {
+            // Announce command to execute
+            logger.log_action(ActionCommandStart { command })?;
+
             // Prepare context
             if let Some(previous) = self.context.previous.as_ref() {
                 self.context.env.insert(ENV_PREV_CODE.to_string(), previous.exit_code.to_string());
@@ -302,10 +327,15 @@ impl<'a> Executor<'a> {
         } else {
             ExecutionResult {
                 command_id: command_id.clone(),
+                focus_id: focus_id.cloned(),
                 exit_code: 0,
                 aborted: true,
+                duration: None,
             }
         };
+
+        // Announce command result
+        logger.log_action(ActionCommandEnd { command, result: &result })?;
 
         // Only main command state is stored
         if !command.is_hook {

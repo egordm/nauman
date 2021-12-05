@@ -1,3 +1,4 @@
+use std::io::Write;
 use std::path::PathBuf;
 use crate::{
     execution::ExecutionContext,
@@ -9,6 +10,8 @@ use crate::{
 };
 use anyhow::{Result};
 use colored::{Colorize};
+use crate::config::ShellType;
+use crate::execution::ExecutionResult;
 
 pub trait LogAction {
     fn min_level(&self) -> LogLevel;
@@ -38,7 +41,8 @@ pub struct ActionShell<'a> {
     pub handler: &'a Shell,
     pub cwd: &'a PathBuf,
     pub env: &'a Env,
-    pub shell: &'a str,
+    pub shell_program: &'a str,
+    pub shell_args: &'a [String],
 }
 
 impl<'a> LogAction for ActionShell<'a> {
@@ -49,6 +53,38 @@ impl<'a> LogAction for ActionShell<'a> {
     fn write(&self, level: LogLevel, output: &mut impl std::io::Write) -> std::io::Result<()> {
         if level >= LogLevel::Info {
             writeln!(output, "{}", pprint::command(&self.handler.run))?;
+        }
+        Ok(())
+    }
+}
+
+pub struct ActionCommandEnd<'a> {
+    pub command: &'a Command,
+    pub result: &'a ExecutionResult,
+}
+
+impl<'a> LogAction for ActionCommandEnd<'a> {
+    fn min_level(&self) -> LogLevel {
+        LogLevel::Error
+    }
+
+    fn write(&self, level: LogLevel, output: &mut impl Write) -> std::io::Result<()> {
+        if !self.result.is_success() && !self.result.is_aborted() && level >= LogLevel::Error {
+            writeln!(output, "{}", pprint::task_error(
+                &self.command.name, self.result.exit_code, self.result.duration.as_ref()
+            ))?;
+        }
+        if self.result.is_aborted() && level >= LogLevel::Debug {
+            if !self.command.is_hook {
+                writeln!(output, "{}", pprint::task_aborted(
+                    &self.command.name, self.command.policy
+                ))?;
+            }
+        }
+        if self.result.is_success() && !self.result.is_aborted() && level >= LogLevel::Debug {
+            writeln!(output, "{}", pprint::task_success(
+                &self.command.name, self.result.duration.as_ref()
+            ))?;
         }
         Ok(())
     }
@@ -71,12 +107,10 @@ impl Logger {
 
     pub fn switch(
         &mut self,
-        command: &Command,
         context: &ExecutionContext,
     ) -> Result<()> {
         let spec = LoggingSpec::from_config(&self.config, &context)?;
         self.output = MultiOutputStream::from_spec(spec);
-        self.log_action(ActionCommandStart { command })?;
         Ok(())
     }
 
@@ -85,7 +119,7 @@ impl Logger {
     }
 
     pub fn log_action(&mut self, action: impl LogAction) -> Result<()> {
-        if action.min_level() >= self.level {
+        if self.level >= action.min_level() {
             action.write(self.level, self.mut_output())?;
         }
         Ok(())
