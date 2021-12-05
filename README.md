@@ -7,11 +7,10 @@
 </div>
 <p align="center">
   <a href="#features">Features</a> •
-  <a href="#how-to-use">How To Use</a> •
-  <a href="#faq">FAQ</a> •
   <a href="#installation">Installation</a> •
   <a href="#usage">Usage</a> •
-  <a href="examples">Examples</a> •
+  <a href="#faq">FAQ</a> •
+  <a href="#examples">Examples</a> •
   <a href="#job-syntax">Job Syntax</a>
 </p>
 <!-- markdownlint-enable -->
@@ -401,6 +400,8 @@ Now you want to keep track of their output (for debugging), you want to add heal
 
 With `nauman` you can create and run a job file that covers it all in a readable and maintainable way.
 
+Additionally `nauman` is written in Rust and can be installed bloat free onto any system as a simple binary. (See [Installation](#installation) for more details).
+
 ### When not to use nauman?
 You should not use `nauman` for tasks where you need:
 
@@ -677,6 +678,21 @@ The task policy is the execution policy enforced for the task. It is a string th
 * `always` - Always execute the task regardless of prior task status.
 * `prior_success` - Execute the task only if prior task has succeeded.
 * `no_prior_failed` - Execute the task only if no other task has failed.
+
+## Alternatives
+If this is not what you are looking for, check out these cool alternatives:
+* Bash or Makefile
+* [just](https://github.com/casey/just) - is a handy way to save and run project-specific commands
+* [fastlane](https://github.com/fastlane/fastlane) - is a tool for iOS and Android developers to automate tedious tasks like generating screenshots, dealing with provisioning profiles, and releasing your application
+* [Apache Airflow](https://airflow.apache.org/) - is a platform created by the community to programmatically author, schedule and monitor workflows.
+
+## TODO
+* [ ] Add support for .env files
+* [ ] Add more tests
+* [ ] Add a way to natively run web requests
+* [ ] Add a way to write outputs of different tasks
+* [ ] Add a templating system
+* [ ] Add a way to specify per log whether ansi is enabled or not
 
 ## Contributing
 
