@@ -1,4 +1,3 @@
-id: rockstar
 name: Test Flow introspecting Rockstar Repo
 cwd: ./example
 env:

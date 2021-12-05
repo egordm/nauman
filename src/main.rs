@@ -1,6 +1,7 @@
 use std::{
     fs,
 };
+use std::path::PathBuf;
 use crate::{
     execution::{Executor},
     logging::Logger
@@ -47,10 +48,13 @@ fn run() -> Result<()> {
     let opts: Opts = Opts::parse();
 
     let contents = fs::read_to_string(&opts.job)
-        .with_context(|| format!("Failed to read file {}", &opts.job))?;
-
-    let job: config::Job = serde_yaml::from_str(&contents)
+        .with_context(|| format!("Failed to read job file: {}", &opts.job))?;
+    let mut job: config::Job = serde_yaml::from_str(&contents)
         .map_err(|e| anyhow!("Failed to parse job file: Error {}", e))?;
+
+    // Update job
+    let filename = PathBuf::from(&opts.job).file_stem().and_then(|f| f.to_str()).unwrap().to_string();
+    job.id = Some(job.id.unwrap_or_else(|| filename));
 
     // Merge options
     let mut options = job.options.clone().unwrap_or_default();
