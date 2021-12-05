@@ -1,5 +1,5 @@
 use std::path::PathBuf;
-use crate::config::{LoggingConfig, LogHandler, LogHandlerType};
+use crate::config::{LogHandlers, LogHandler, LogHandlerType};
 use crate::execution::{ExecutionContext, resolve_cwd};
 use anyhow::{format_err, Result};
 
@@ -120,7 +120,7 @@ pub struct LoggingSpec {
 }
 
 impl LoggingSpec {
-    pub fn from_config(config: &LoggingConfig, context: &ExecutionContext) -> Result<Self> {
+    pub fn from_config(config: &LogHandlers, context: &ExecutionContext) -> Result<Self> {
         let mut result = Vec::new();
         for handler in config {
             let input_stream = if handler.options.stdout && handler.options.stderr {

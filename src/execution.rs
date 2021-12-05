@@ -6,6 +6,7 @@ use std::{
     process::Stdio,
     os::unix::io::{AsRawFd, FromRawFd},
 };
+use std::collections::HashMap;
 use crate::{
     flow,
     flow::CommandId,
@@ -238,7 +239,7 @@ impl<'a> Executor<'a> {
         options: config::Options,
         flow: &'a flow::Flow
     ) -> Result<Self> {
-        let mut env: Env = std::env::vars().collect();
+        let mut env: Env = if options.system_env { std::env::vars().collect() } else { HashMap::new() };
         env.extend(flow.env.clone());
 
         let cwd = resolve_cwd(&std::env::current_dir()?, flow.cwd.as_ref());

@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 use crate::{
     execution::ExecutionContext,
-    config::{LoggingConfig, Shell},
+    config::{LogHandlers, Shell},
     logging::{MultiOutputStream, LoggingSpec, pprint},
     common::Env,
     flow::Command,
@@ -55,13 +55,13 @@ impl<'a> LogAction for ActionShell<'a> {
 }
 
 pub struct Logger {
-    config: LoggingConfig,
+    config: LogHandlers,
     level: LogLevel,
     pub output: MultiOutputStream,
 }
 
 impl Logger {
-    pub fn new(config: LoggingConfig, level: LogLevel) -> Logger {
+    pub fn new(config: LogHandlers, level: LogLevel) -> Logger {
         Logger {
             config,
             level,

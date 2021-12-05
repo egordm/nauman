@@ -32,6 +32,8 @@ struct Opts {
     ansi: Option<bool>,
     /// Directory to store logs
     log_dir: Option<String>,
+    /// Whether to use system environment variables
+    system_env: Option<bool>,
 }
 
 fn main() {
@@ -69,6 +71,9 @@ fn run() -> Result<()> {
     }
     if let Some(log_dir) = opts.log_dir {
         options.log_dir = Some(log_dir);
+    }
+    if let Some(system_env) = opts.system_env {
+        options.system_env = system_env;
     }
 
     colored::control::set_override(options.ansi);
