@@ -2,13 +2,11 @@ use std::{
     fs,
     io::{self, BufWriter, Write},
     sync::{Mutex},
-    ops::Index,
     path::Path,
 };
-use std::cell::RefCell;
-use std::rc::Rc;
-use crate::config::{LoggingConfig, LogHandler, LogHandlerType};
-use crate::logging::{InputStream, LoggingSpec, OutputStreamSpec, PipeSpec};
+use crate::{
+    logging::{InputStream, LoggingSpec, OutputStreamSpec, PipeSpec}
+};
 
 pub struct Stdout {
     pub stream: io::Stdout,
@@ -24,23 +22,6 @@ pub struct File {
 
 pub struct Writer {
     pub stream: Mutex<Box<dyn Write + Send>>,
-}
-
-pub struct SharedWriter {
-    pub stream: Rc<RefCell<dyn Write + Send>>,
-}
-
-impl SharedWriter {
-    pub fn split(self) -> (Self, Self) {
-        (
-            SharedWriter {
-                stream: self.stream.clone(),
-            },
-            SharedWriter {
-                stream: self.stream,
-            },
-        )
-    }
 }
 
 pub struct Null;

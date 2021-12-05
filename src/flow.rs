@@ -5,7 +5,7 @@ use regex::Regex;
 use crate::{
     common::Env,
     config,
-    config::{Hook, LoggingConfig}
+    config::{Hook}
 };
 use crate::config::{ExecutionPolicy, TaskHandler};
 use crate::execution::ExecutionResult;
@@ -242,15 +242,16 @@ impl <'a> FlowIterator<'a> {
 
     fn push(&mut self, routine_id: RoutineId, focus: Option<CommandId>) {
         let routine = self.routine(&routine_id);
-
-        self.routine_stack.push(StackItem{
+        let item = StackItem{
             routine: routine_id,
             position: -1,
             scheduled: false,
             is_hook: routine.is_hook,
             length: routine.commands.len() as i32,
             focus_command: focus,
-        });
+        };
+
+        self.routine_stack.push(item);
     }
 
     fn pop(&mut self) {
@@ -267,12 +268,12 @@ impl <'a> FlowIterator<'a> {
         let command = self.command(command_id);
         if !command.is_hook {
             // Add a task-specific hook
-            if let Some(hook) = command.hooks.get(&hook_type) {
-                self.push(hook.clone(), Some(command_id.clone()));
+            if let Some(hook) = command.hooks.get(&hook_type).cloned() {
+                self.push(hook, Some(command_id.clone()));
             }
             // Add a global hook
-            if let Some(hook) = self.flow.hooks.get(&hook_type) {
-                self.push(hook.clone(), Some(command_id.clone()));
+            if let Some(hook) = self.flow.hooks.get(&hook_type).cloned() {
+                self.push(hook, Some(command_id.clone()));
             }
         }
     }
@@ -336,7 +337,6 @@ impl <'a> Iterator for FlowIterator<'a> {
 
                 Some((command_id, command, item.focus_command.clone()))
             }
-            _ => None
         }
     }
 }

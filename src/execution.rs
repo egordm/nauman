@@ -1,27 +1,24 @@
 use std::{
     io,
     fs::File,
-    io::{BufReader, Read, Write},
+    io::{BufReader, Read},
     path::{PathBuf},
     process::Stdio,
     os::unix::io::{AsRawFd, FromRawFd},
 };
-use std::time::SystemTime;
 use crate::{
     flow,
     flow::CommandId,
-    logging::{OutputStream, MultiOutputStream, MultiWriter},
+    logging::{MultiOutputStream, MultiWriter},
     common::Env,
-    logging,
     Logger,
     config,
-    config::{ExecutionPolicy, LoggingConfig, Shell, TaskHandler},
-    logging::{ActionShell, InputStream, LoggingSpec, PipeSpec},
+    config::{ExecutionPolicy, Shell, TaskHandler},
+    logging::{ActionShell, InputStream},
     flow::Command
 };
 use anyhow::{Context as AnyhowContext, Result};
-use chrono::{DateTime, Local, Utc};
-use colored::*;
+use chrono::{Local};
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub enum ExecutionState {
@@ -84,10 +81,6 @@ impl ExecutionContext {
 
     pub fn current_command_id(&self) -> &CommandId {
         self.current.as_ref().map(|(id, _)| id).expect("No current command")
-    }
-
-    pub fn current_command(&self) -> &Command {
-        self.current.as_ref().map(|(_, command)| command).expect("No current command")
     }
 }
 

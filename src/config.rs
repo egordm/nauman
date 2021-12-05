@@ -1,6 +1,5 @@
 use std::collections::HashMap;
 use std::fmt::{Display, Formatter};
-use std::str::FromStr;
 use heck::SnakeCase;
 use serde::{Serialize, Deserialize};
 use crate::common::Env;
@@ -94,8 +93,8 @@ pub struct FileHandler {
     pub split: bool,
 }
 
-#[serde(rename_all = "snake_case", tag = "type")]
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case", tag = "type")]
 pub enum LogHandlerType {
     File(FileHandler),
     Console,
@@ -111,8 +110,8 @@ pub struct LogHandler {
 
 pub type LoggingConfig = Vec<LogHandler>;
 
-#[serde(rename_all = "snake_case")]
 #[derive(Debug, Copy, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[serde(rename_all = "snake_case")]
 pub enum Hook {
     BeforeJob,
     AfterJob,
@@ -128,8 +127,8 @@ impl Display for Hook {
     }
 }
 
-#[serde(rename_all = "snake_case")]
 #[derive(Debug, Copy, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[serde(rename_all = "snake_case")]
 pub enum ExecutionPolicy {
     NoPriorFailed,
     PriorSuccess,

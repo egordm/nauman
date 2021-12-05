@@ -5,7 +5,7 @@ use crate::{
     execution::{Executor},
     logging::Logger
 };
-use clap::{AppSettings, Parser};
+use clap::{Parser};
 use crate::common::LogLevel;
 use anyhow::{anyhow, Context as AnyhowContext, Result};
 use crate::logging::pprint;
