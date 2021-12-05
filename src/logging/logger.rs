@@ -1,11 +1,12 @@
 use std::path::PathBuf;
-use crate::config::{LoggingConfig, LogLevel, Shell};
+use crate::config::{LoggingConfig, Shell};
 use crate::execution::ExecutionContext;
 use crate::logging::{MultiOutputStream, LoggingSpec, pprint};
 use anyhow::{Context as AnyhowContext, Result};
 use colored::{ColoredString, Colorize};
 use crate::common::Env;
 use crate::flow::Command;
+use crate::LogLevel;
 
 pub trait LogAction {
     fn min_level(&self) -> LogLevel;
@@ -53,14 +54,15 @@ impl<'a> LogAction for ActionShell<'a> {
 
 pub struct Logger {
     config: LoggingConfig,
+    level: LogLevel,
     pub output: MultiOutputStream,
 }
 
 impl Logger {
-    pub fn new(config: LoggingConfig) -> Logger {
-        colored::control::set_override(config.ansi);
+    pub fn new(config: LoggingConfig, level: LogLevel) -> Logger {
         Logger {
             config,
+            level,
             output: MultiOutputStream::new(),
         }
     }
@@ -81,14 +83,10 @@ impl Logger {
     }
 
     pub fn log_action(&mut self, action: impl LogAction) -> Result<()> {
-        if action.min_level() >= self.level() {
-            action.write(self.level(), self.mut_output())?;
+        if action.min_level() >= self.level {
+            action.write(self.level, self.mut_output())?;
         }
         Ok(())
-    }
-
-    pub fn level(&self) -> LogLevel {
-        self.config.level
     }
 
     pub fn get_config(&self) -> &LoggingConfig {

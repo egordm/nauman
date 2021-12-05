@@ -3,6 +3,8 @@ name: Test Flow introspecting Rockstar Repo
 cwd: ./example
 env:
   ROCKSTAR_REPO: https://github.com/RockstarLang/rockstar.git
+options:
+  log_dir: ./logs
 
 tasks:
   - name: Create a temporary directory
@@ -29,7 +31,6 @@ tasks:
   - name: Cleanup
     run: rm -rf tmp
 
-
 hooks:
   before_job:
     - name: Before Scenario
@@ -51,17 +52,15 @@ hooks:
       run: ls
 
 logging:
-  dir: logs
-  handlers:
-    - type: file
-      stdout: true
-      stderr: false
-      output: ./full.log
-    - type: file
-      stdout: true
-      stderr: true
-      split: true
-      output: ./separate
-    - type: console
-      stdout: true
-      stderr: true
+  - type: file
+    stdout: true
+    stderr: false
+    output: ./full.log
+  - type: file
+    stdout: true
+    stderr: true
+    split: true
+    output: ./separate
+  - type: console
+    stdout: true
+    stderr: true

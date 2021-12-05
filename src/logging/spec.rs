@@ -69,7 +69,7 @@ impl PipeSpec {
                     return Ok(Vec::new());
                 }
 
-                let mut file = resolve_cwd(&context.cwd, f.output.as_ref());
+                let mut file = resolve_cwd(&context.log_dir, f.output.as_ref());
                 // Split logs should be named appropriately
                 if f.split {
                     if file.is_file() {
@@ -123,7 +123,7 @@ pub struct LoggingSpec {
 impl LoggingSpec {
     pub fn from_config(config: &LoggingConfig, context: &ExecutionContext) -> Result<Self> {
         let mut result = Vec::new();
-        for handler in &config.handlers {
+        for handler in config {
             let input_stream = if handler.options.stdout && handler.options.stderr {
                 InputStream::Both
             } else if handler.options.stdout {

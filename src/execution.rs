@@ -7,13 +7,21 @@ use std::{
     os::unix::io::{AsRawFd, FromRawFd},
 };
 use std::time::SystemTime;
-use crate::{flow, flow::CommandId, logging::{OutputStream, MultiOutputStream, MultiWriter}, common::Env, logging, Logger, config};
+use crate::{
+    flow,
+    flow::CommandId,
+    logging::{OutputStream, MultiOutputStream, MultiWriter},
+    common::Env,
+    logging,
+    Logger,
+    config,
+    config::{ExecutionPolicy, LoggingConfig, Shell, TaskHandler},
+    logging::{ActionShell, InputStream, LoggingSpec, PipeSpec},
+    flow::Command
+};
 use anyhow::{Context as AnyhowContext, Result};
 use chrono::{DateTime, Local, Utc};
-use crate::config::{ExecutionPolicy, LoggingConfig, Shell, TaskHandler};
-use crate::logging::{ActionShell, InputStream, LoggingSpec, PipeSpec};
 use colored::*;
-use crate::flow::Command;
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub enum ExecutionState {
@@ -253,7 +261,7 @@ impl<'a> Executor<'a> {
         logger: &mut Logger,
     ) -> Result<()> {
         // Create log dir
-        self.context.log_dir = resolve_cwd(&self.context.cwd, logger.get_config().dir.as_ref());
+        self.context.log_dir = resolve_cwd(&self.context.cwd, self.context.options.log_dir.as_ref());
         self.context.log_dir.push(
             format!("{}_{}", self.flow.id, Local::now().format("%Y-%m-%dT%H:%M:%S"))
         );

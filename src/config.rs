@@ -1,22 +1,11 @@
 use std::collections::HashMap;
 use std::fmt::{Display, Formatter};
+use std::str::FromStr;
 use heck::SnakeCase;
 use serde::{Serialize, Deserialize};
 use crate::common::Env;
+use crate::LogLevel;
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub enum LogLevel {
-    Debug = 4,
-    Info = 3,
-    Warn = 2,
-    Error = 1,
-}
-
-impl Default for LogLevel {
-    fn default() -> Self {
-        LogLevel::Info
-    }
-}
 
 fn default_shell() -> String {
     if cfg!(target_os = "windows") {
@@ -32,6 +21,11 @@ pub struct Options {
     pub shell: String,
     #[serde(default = "false_default")]
     pub dry_run: bool,
+    #[serde(default = "true_default")]
+    pub ansi: bool,
+    #[serde(default)]
+    pub log_level: LogLevel,
+    pub log_dir: Option<String>,
 }
 
 impl Default for Options {
@@ -39,6 +33,9 @@ impl Default for Options {
         Self {
             shell: default_shell(),
             dry_run: false_default(),
+            ansi: true_default(),
+            log_level: LogLevel::default(),
+            log_dir: None,
         }
     }
 }
@@ -112,15 +109,7 @@ pub struct LogHandler {
     pub options: LogOptions,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct LoggingConfig {
-    #[serde(default = "true_default")]
-    pub ansi: bool,
-    pub dir: Option<String>,
-    pub handlers: Vec<LogHandler>,
-    #[serde(default)]
-    pub level: LogLevel,
-}
+pub type LoggingConfig = Vec<LogHandler>;
 
 #[serde(rename_all = "snake_case")]
 #[derive(Debug, Copy, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
