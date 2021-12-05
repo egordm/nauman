@@ -1,5 +1,5 @@
 name: Test Flow introspecting Rockstar Repo
-cwd: ./example
+cwd: ./examples
 env:
   ROCKSTAR_REPO: https://github.com/RockstarLang/rockstar.git
 options:
