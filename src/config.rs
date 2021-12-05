@@ -280,7 +280,7 @@ pub struct Job {
     pub hooks: HashMap<Hook, Tasks>,
     /// List of log handlers for the job.
     pub logging: LogHandlers,
-    /// Execution policy for the job.
+    /// Global execution policy for the job.
     #[serde(default)]
     pub policy: ExecutionPolicy,
     /// Global option overrides for the job.

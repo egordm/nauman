@@ -6,7 +6,6 @@ use serde::{Serialize, Deserialize};
 pub type Env = HashMap<String, String>;
 
 
-
 #[derive(ArgEnum, Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum LogLevel {
     #[clap(name = "debug")]

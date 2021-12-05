@@ -49,6 +49,7 @@ fn main() {
 fn run() -> Result<()> {
     let opts: Opts = Opts::parse();
 
+    // Read and parse the job file
     let contents = fs::read_to_string(&opts.job)
         .with_context(|| format!("Failed to read job file: {}", &opts.job))?;
     let mut job: config::Job = serde_yaml::from_str(&contents)
@@ -59,6 +60,7 @@ fn run() -> Result<()> {
     job.id = Some(job.id.unwrap_or_else(|| filename));
 
     // Merge options
+    // TODO: move this to a separate function
     let mut options = job.options.clone().unwrap_or_default();
     if let Some(level) = opts.level {
         options.log_level = level;
@@ -76,14 +78,19 @@ fn run() -> Result<()> {
         options.system_env = system_env;
     }
 
+    // Setup the logger
     colored::control::set_override(options.ansi);
     let mut logger = Logger::new(job.logging.clone(), options.log_level);
+
+    // Parse the job to a flow
     let flow = flow::Flow::parse(&job)
         .map_err(|e| anyhow!("Failed parsing job: {}", e))?;
 
+    // Create an executor for the given flow
     let mut executor = Executor::new(options, &flow)
         .map_err(|e| anyhow!("Failed to create executor: {}", e))?;
 
+    // Execute the flow
     executor.execute(&mut logger)
         .map_err(|e| anyhow!("Fatal error occurred during job execution: {}", e))?;
 

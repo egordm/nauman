@@ -90,6 +90,8 @@ impl ExecutionContext {
     }
 }
 
+/// Returns cwd path relative to the current cwd.
+/// If the desired cwd is absolute, it is returned as is.
 pub fn resolve_cwd(current: &PathBuf, cwd: Option<&String>) -> PathBuf {
     let cwd = cwd.map(PathBuf::from).unwrap_or_else(|| current.clone());
     if cwd.is_absolute() {
@@ -99,6 +101,7 @@ pub fn resolve_cwd(current: &PathBuf, cwd: Option<&String>) -> PathBuf {
     }
 }
 
+/// Reads the contents of a file into a buffer.
 fn read_buffer(source: &mut BufReader<File>, buffer: &mut [u8]) -> io::Result<Option<usize>> {
     match source.read(buffer) {
         Ok(count) => Ok(Some(count)),
@@ -111,6 +114,7 @@ fn read_buffer(source: &mut BufReader<File>, buffer: &mut [u8]) -> io::Result<Op
 
 const BUFFER_SIZE: usize = 1024; // 1 KB
 
+/// Responsible for executing a command and capturing its output.
 pub fn capture_command(
     child: &std::process::Child,
     output: &mut MultiOutputStream,
@@ -251,6 +255,7 @@ pub fn execute_command(
 pub const ENV_PREV_CODE: &str = "NAUMAN_PREV_CODE";
 pub const ENV_PREV_ID: &str = "NAUMAN_PREV_ID";
 
+/// Executor responsible for executing a flow.
 pub struct Executor<'a> {
     pub flow: &'a flow::Flow,
     pub context: ExecutionContext,
@@ -272,6 +277,7 @@ impl<'a> Executor<'a> {
         })
     }
 
+    /// Execute a whole flow
     pub fn execute(
         &mut self,
         logger: &mut Logger,
@@ -283,20 +289,19 @@ impl<'a> Executor<'a> {
         );
         std::fs::create_dir_all(&self.context.log_dir)?;
 
-
+        // Loop through all the commands and store the results
         let mut results = Vec::new();
         let mut flow_iter = self.flow.iter();
         while let Some((command_id, command, focus_id)) = flow_iter.next() {
             let result = self.execute_step(&command_id, &command, focus_id.as_ref(), logger)?;
             flow_iter.push_result(&command_id, &result);
 
-            if !command.is_hook {
-                results.push((command_id.clone(), result));
-            }
+            results.push((command_id.clone(), result));
         }
         Ok(())
     }
 
+    /// Execute a single command
     pub fn execute_step(
         &mut self,
         command_id: &CommandId,
@@ -304,6 +309,7 @@ impl<'a> Executor<'a> {
         focus_id: Option<&CommandId>,
         logger: &mut Logger,
     ) -> Result<ExecutionResult> {
+        // Set up the context for the current command
         self.context.current = Some((command_id.clone(), command.clone()));
         self.context.focus = focus_id.map(|id| id.clone());
         self.context.will_execute = match command.policy {
@@ -311,18 +317,23 @@ impl<'a> Executor<'a> {
             ExecutionPolicy::PriorSuccess => self.context.previous.as_ref().map(|r| r.is_success()).unwrap_or(true),
             ExecutionPolicy::Always => true
         };
+
+        // Switch logger context to the current command
         logger.switch(&self.context)?;
 
+        // Execute the command if possible
         let result = if self.context.will_execute {
             // Announce command to execute
             logger.log_action(ActionCommandStart { command })?;
 
             // Prepare context
+            // TODO: should this be moved to context preparation?
             if let Some(previous) = self.context.previous.as_ref() {
                 self.context.env.insert(ENV_PREV_CODE.to_string(), previous.exit_code.to_string());
                 self.context.env.insert(ENV_PREV_ID.to_string(), previous.command_id.to_string());
             }
 
+            // Execute the actual command
             execute_command(command, &mut self.context, logger)?
         } else {
             ExecutionResult {

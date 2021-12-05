@@ -23,48 +23,70 @@ lazy_static! {
     static ref IDENTIFIER_REGEX: Regex = Regex::new(r"[^a-zA-Z0-9_\-]").unwrap();
 }
 
+/// Formats text as a valid identifier.
+/// Which should also be valid as a system file name.
 fn format_identifier(text: &str) -> String {
     IDENTIFIER_REGEX.replace_all(
         &text.to_lowercase().replace(" ", "-"), ""
     ).to_string()
 }
 
+/// Generates a unique identifier for a command given a name and counter in the current routine
 fn generate_id(name: &str, counter: usize, prefix: &str) -> String {
     format!("{}{:03}_{}", prefix, counter, format_identifier(name))
 }
 
+/// A command is a task that can be executed by the system.
 #[derive(Debug, Clone)]
 pub struct Command {
+    /// The command's name.
     pub name: String,
+    /// The command's handler
     pub handler: TaskHandler,
+    /// Environment variable overrides
     pub env: Env,
+    /// Working directory to execute the command in.
     pub cwd: Option<String>,
+    /// Whether the command is a hook.
     pub is_hook: bool,
+    /// The command's hook overrides
     pub hooks: Hooks,
+    /// The command's execution policy
     pub policy: ExecutionPolicy,
 }
 
 #[derive(Debug, Clone)]
 pub struct Routine {
+    /// List of commands to execute.
     commands: Vec<CommandId>,
+    /// Whether the routine is a hook.
     pub is_hook: bool,
 }
 
+/// A flow is a collection of routines and commands representing a job
 #[derive(Debug, Clone)]
 pub struct Flow {
+    /// The flow's name.
     pub id: String,
+    /// List of tasks with corresponding command ids
     pub dependencies: Dependencies,
+    /// List of routines with corresponding routine ids
     pub routines: Routines,
+    /// List of global hooks
     pub hooks: Hooks,
+    /// Collection of job specific environment variable overrides
     pub env: Env,
+    /// Working directory to execute the job in.
     pub cwd: Option<String>,
 }
 
 impl Flow {
+    /// Creates a new flow from the job configuration.
     pub fn parse(job: &config::Job) -> Result<Self> {
         FlowBuilder::new().parse_flow(job)
     }
 
+    /// Iterates through flow's commands including hook logic
     pub fn iter(&self) -> FlowIterator {
         FlowIterator::new(self)
     }
@@ -72,8 +94,11 @@ impl Flow {
 
 #[derive(Debug)]
 pub struct FlowBuilder {
+    /// List of tasks with corresponding command ids
     pub dependencies: Dependencies,
+    /// List of routines with corresponding routine ids
     pub routines: Routines,
+    /// Global execution policy
     pub policy: ExecutionPolicy,
 }
 
@@ -86,6 +111,7 @@ impl FlowBuilder {
         }
     }
 
+    /// Parses a routine from a list of tasks
     pub fn parse_routine(
         &mut self,
         tasks: &config::Tasks,
@@ -112,6 +138,7 @@ impl FlowBuilder {
         Ok(Routine { commands,  is_hook })
     }
 
+    /// Parses a list of hooks
     pub fn parse_hooks(
         &mut self,
         hooks: &config::Hooks,
@@ -134,6 +161,7 @@ impl FlowBuilder {
         Ok(result)
     }
 
+    /// Parses a command from a task
     pub fn parse_command(
         &mut self,
         task: &config::Task,
@@ -157,6 +185,7 @@ impl FlowBuilder {
         })
     }
 
+    /// Parses a flow from a job configuration
     pub fn parse_flow(
         mut self,
         job: &config::Job,
@@ -178,17 +207,26 @@ impl FlowBuilder {
     }
 }
 
-
+/// Stack item encoding information about current execution state of a routine
 #[derive(Debug, Clone)]
 pub struct StackItem {
+    /// Current routine
     pub routine: RoutineId,
+    /// Current position pointing to a command in routine
+    /// value of -1 means that routine has yet to schedule before hooks
     pub position: i32,
+    /// Whether hooks for the current command have been scheduled
     pub scheduled: bool,
+    /// Whether the current command is a hook
     pub is_hook: bool,
+    /// Length of the current routine
     pub length: i32,
+    /// Reference to main current (non hook) routine command
+    /// If none, then the main routine is finished
     pub focus_command: Option<CommandId>,
 }
 
+/// Iterator over flow's commands including hook logic
 pub struct FlowIterator<'a> {
     flow: &'a Flow,
     routine_stack: Vec<StackItem>,
@@ -204,14 +242,17 @@ impl <'a> FlowIterator<'a> {
         res
     }
 
+    /// Returns stack head item
     fn head(&self) -> Option<StackItem> {
         self.routine_stack.last().cloned()
     }
 
+    /// Returns mutable ref to the stack head item
     fn head_mut(&mut self) -> Option<&mut StackItem> {
         self.routine_stack.last_mut()
     }
 
+    /// Increments the current routine position
     fn increment_position(&mut self) {
         if let Some(item) = self.head_mut() {
             item.position += 1;
@@ -219,20 +260,24 @@ impl <'a> FlowIterator<'a> {
         }
     }
 
+    /// Sets current stack item to scheduled
     fn set_scheduled(&mut self) {
         if let Some(item) = self.head_mut() {
             item.scheduled = true;
         }
     }
 
+    /// Returns a routine given its id
     fn routine(&self, routine_id: &RoutineId) -> &Routine {
         self.flow.routines.get(routine_id).expect("Routine not found")
     }
 
+    /// Returns a command given its id
     fn command(&self, command_id: &CommandId) -> &Command {
         self.flow.dependencies.get(command_id).expect("Command not found")
     }
 
+    /// Returns info about current command given a stack item
     fn get_command(&self, head: &StackItem) -> Option<(&CommandId, &Command)> {
         let routine = self.routine(&head.routine);
         let command_id = routine.commands.get(head.position as usize).expect("Command not found");
@@ -240,6 +285,7 @@ impl <'a> FlowIterator<'a> {
         Some((command_id, command))
     }
 
+    /// Pushes a new routine onto the stack
     fn push(&mut self, routine_id: RoutineId, focus: Option<CommandId>) {
         let routine = self.routine(&routine_id);
         let item = StackItem{
@@ -254,10 +300,12 @@ impl <'a> FlowIterator<'a> {
         self.routine_stack.push(item);
     }
 
+    /// Pops the current routine from the stack
     fn pop(&mut self) {
         self.routine_stack.pop();
     }
 
+    /// Pushes a command result and subsequent commands to the stack
     pub fn push_result(
         &mut self,
         command_id: &CommandId,
@@ -282,28 +330,34 @@ impl <'a> FlowIterator<'a> {
 impl <'a> Iterator for FlowIterator<'a> {
     type Item = (CommandId, Command, Option<CommandId>);
 
+    /// Returns the next command to execute
     fn next(&mut self) -> Option<Self::Item> {
         match self.head() {
             // Empty Stack, we are done
             None => None,
+            // We are at the end the current routine
             Some(item) if item.position == item.length => {
                 self.pop();
                 if !item.is_hook {
+                    // We are at the end of the main routine, schedule the after job hook
                     if let Some(hook_id) = self.flow.hooks.get(&Hook::AfterJob) {
                         self.push(hook_id.clone(), None);
                     }
                 }
                 self.next()
             },
+            // We are at the start of the current routine
             Some(item) if item.position == -1 => {
                 self.increment_position();
                 if !item.is_hook {
+                    // We are at the start of the main routine, schedule the before job hook
                     if let Some(hook_id) = self.flow.hooks.get(&Hook::BeforeJob) {
                         self.push(hook_id.clone(), None);
                     }
                 }
                 self.next()
             }
+            // We at a main routine command (non hook) which has not been scheduled
             Some(item) if !item.is_hook && !item.scheduled => {
                 self.set_scheduled();
                 // Add a task-specific hook
@@ -318,6 +372,7 @@ impl <'a> Iterator for FlowIterator<'a> {
                 }
                 self.next()
             }
+            // We are at a command which has been scheduled
             Some(item) => {
                 self.increment_position();
 
