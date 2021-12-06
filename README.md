@@ -425,7 +425,7 @@ You should not use `nauman` for tasks where you need:
 ## Installation
 The binary name for nauman is `nauman`.
 
-[Archives of precompiled binaries for nauman are available for Windows, macOS and Linux. Linux and Windows binaries are static executables.](https://github.com/BurntSushi/EgorDm/nauman) Users of platforms not explicitly mentioned below are advised to download one of these archives.
+[Archives of precompiled binaries for nauman are available for Windows, macOS and Linux. Linux and Windows binaries are static executables.](https://github.com/EgorDm/nauman/releases) Users of platforms not explicitly mentioned below are advised to download one of these archives.
 
 If you're a Rust programmer, nauman can be installed with cargo.
 
