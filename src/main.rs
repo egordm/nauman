@@ -10,7 +10,7 @@ use crate::{
     execution::{Executor},
     logging::Logger
 };
-use clap::{Parser};
+use clap::{Parser, ValueHint};
 use crate::common::LogLevel;
 use anyhow::{anyhow, Context as AnyhowContext, Result};
 use crate::config::LogHandler;
@@ -46,12 +46,12 @@ struct Opts {
     level: Option<LogLevel>,
     /// Dry run to check job configuration (default: false)
     #[clap(long)]
-    dry_run: Option<bool>,
+    dry_run: bool,
     /// Include ansi colors in output (default: true)
     #[clap(long)]
     ansi: Option<bool>,
     /// Directory to store logs in (default: current directory)
-    #[clap(long)]
+    #[clap(long, value_hint = ValueHint::FilePath)]
     log_dir: Option<String>,
     /// Whether to use system environment variables (default: true)
     #[clap(long)]
@@ -90,8 +90,8 @@ fn run() -> Result<()> {
     if let Some(level) = opts.level {
         options.log_level = level;
     }
-    if let Some(dry_run) = opts.dry_run {
-        options.dry_run = dry_run;
+    if opts.dry_run {
+        options.dry_run = opts.dry_run;
     }
     if let Some(ansi) = opts.ansi {
         options.ansi = ansi;
