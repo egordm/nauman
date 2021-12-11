@@ -7,10 +7,11 @@ use std::{
     os::unix::io::{AsRawFd, FromRawFd},
 };
 use std::time::Instant;
-use crate::{flow, flow::CommandId, logging::{MultiOutputStream, MultiWriter}, common::Env, config, config::{ExecutionPolicy, Shell, TaskHandler}, logging::{ActionShell, InputStream}, flow::Command, logging::ActionCommandStart, utils};
+use crate::{flow, flow::CommandId, logging::{MultiOutputStream, MultiWriter}, common::Env, config, config::{ExecutionPolicy, Shell, TaskHandler}, logging::{ActionShell, InputStream}, flow::Command, logging::ActionCommandStart};
 use anyhow::{anyhow, Context as AnyhowContext, Result};
 use chrono::{Local};
 use crate::logging::{ActionCommandEnd, Logger};
+use crate::utils::{resolve_cwd, with_tempfile};
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub enum ExecutionState {
@@ -78,16 +79,6 @@ impl ExecutionContext {
     }
 }
 
-/// Returns cwd path relative to the current cwd.
-/// If the desired cwd is absolute, it is returned as is.
-pub fn resolve_cwd(current: &PathBuf, cwd: Option<&String>) -> PathBuf {
-    let cwd = cwd.map(PathBuf::from).unwrap_or_else(|| current.clone());
-    if cwd.is_absolute() {
-        cwd
-    } else {
-        current.join(cwd)
-    }
-}
 
 /// Reads the contents of a file into a buffer.
 fn read_buffer(source: &mut BufReader<File>, buffer: &mut [u8]) -> io::Result<Option<usize>> {
@@ -249,23 +240,6 @@ pub const ENV_TASK_NAME: &str = "NAUMAN_TASK_NAME";
 pub const ENV_TASK_ID: &str = "NAUMAN_TASK_ID";
 pub const ENV_OUTPUT_FILE: &str = "NAUMAN_OUTPUT_FILE";
 
-/// Executes a function with a reserved temporary file
-/// The temporary file is deleted when the function returns
-pub fn with_tempfile<R>(
-    base: &PathBuf,
-    f: impl FnOnce(&PathBuf) -> Result<R>,
-) -> Result<R> {
-    let temp_path = utils::tmpfile(base,"nauman", "")?;
-
-    let result = f(&temp_path);
-    if temp_path.exists() {
-        if let Err(_e) = std::fs::remove_file(temp_path) {
-            // TODO: log error / warning
-        }
-    }
-    result
-}
-
 
 /// Executor responsible for executing a flow.
 pub struct Executor<'a> {
@@ -276,7 +250,7 @@ pub struct Executor<'a> {
 impl<'a> Executor<'a> {
     pub fn new(
         options: config::Options,
-        flow: &'a flow::Flow
+        flow: &'a flow::Flow,
     ) -> Result<Self> {
         let cwd = resolve_cwd(&std::env::current_dir()?, flow.cwd.as_ref());
 
@@ -403,3 +377,4 @@ impl<'a> Executor<'a> {
         Ok(result)
     }
 }
+

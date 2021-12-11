@@ -1,7 +1,8 @@
 use std::path::PathBuf;
 use crate::config::{LogHandlers, LogHandler, LogHandlerType};
-use crate::execution::{ExecutionContext, resolve_cwd};
+use crate::execution::{ExecutionContext};
 use anyhow::{format_err, Result};
+use crate::utils::resolve_cwd;
 
 
 #[derive(Debug, Clone, Copy)]
