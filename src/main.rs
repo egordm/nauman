@@ -161,7 +161,6 @@ fn process(opts: Opts) -> Result<()> {
 mod tests {
     use test_case::test_case;
     use std::path::PathBuf;
-    use std::process::Command;
     use crate::{Opts, process};
 
     #[test_case("env-vars.yml")]
