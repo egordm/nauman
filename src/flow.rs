@@ -39,6 +39,8 @@ fn generate_id(name: &str, counter: usize, prefix: &str) -> String {
 /// A command is a task that can be executed by the system.
 #[derive(Debug, Clone)]
 pub struct Command {
+    /// The command's number.
+    pub task_no: Option<i32>,
     /// The command's name.
     pub name: String,
     /// The command's handler
@@ -133,7 +135,7 @@ impl FlowBuilder {
                 .unwrap_or_else(|| generate_id(&task_name, counter, prefix));
 
             // TODO: handle this in a more verbose way
-            let command = self.parse_command(task, &task_id, is_hook)?;
+            let command = self.parse_command(task, &task_id, is_hook, Some(counter as i32))?;
             if let Some(command) = self.dependencies.insert(task_id.clone(), command) {
                 return Err(anyhow!("Task \"{}\" has a duplicate id. Task \"{}\" has the same id", task_name, command.name));
             }
@@ -173,6 +175,7 @@ impl FlowBuilder {
         task: &config::Task,
         prefix: &str,
         is_hook: bool,
+        counter: Option<i32>,
     ) -> Result<Command> {
         let hooks = if let Some(hooks) = &task.hooks {
             self.parse_hooks(hooks, prefix, is_hook)?
@@ -181,6 +184,7 @@ impl FlowBuilder {
         };
 
         Ok(Command {
+            task_no: counter,
             name: task.get_name(),
             handler: task.handler.clone(),
             env: task.env.clone().unwrap_or_default(),

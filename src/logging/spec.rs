@@ -1,7 +1,8 @@
 use std::path::PathBuf;
 use crate::config::{LogHandlers, LogHandler, LogHandlerType};
-use crate::execution::{ExecutionContext, resolve_cwd};
+use crate::execution::{ExecutionContext};
 use anyhow::{format_err, Result};
+use crate::utils::resolve_cwd;
 
 
 #[derive(Debug, Clone, Copy)]
@@ -9,13 +10,16 @@ pub enum InputStream {
     Stdout,
     Stderr,
     Both,
+    None,
 }
 
 impl InputStream {
+    #[allow(dead_code)]
     pub fn is_stdout(&self) -> bool {
         !matches!(self, InputStream::Stderr)
     }
 
+    #[allow(dead_code)]
     pub fn is_stderr(&self) -> bool {
         !matches!(self, InputStream::Stdout)
     }
@@ -39,6 +43,7 @@ pub struct FileOutputSpec {
 #[derive(Debug, Clone)]
 pub enum OutputStreamSpec {
     Stdout,
+    #[allow(dead_code)]
     Stderr,
     File(FileOutputSpec),
 }
@@ -86,23 +91,10 @@ impl PipeSpec {
                 }])
             },
             LogHandlerType::Console => {
-                let mut result = Vec::new();
-
-                if input.is_stdout() {
-                    result.push(Self {
-                        input: InputStream::Stdout,
-                        output: OutputStreamSpec::Stdout,
-                    });
-                }
-
-                if input.is_stderr() {
-                    result.push(Self {
-                        input: InputStream::Stderr,
-                        output: OutputStreamSpec::Stderr,
-                    });
-                }
-
-                Ok(result)
+                Ok(vec![Self {
+                    input,
+                    output: OutputStreamSpec::Stdout,
+                }])
             },
         }
     }
@@ -124,7 +116,7 @@ impl LoggingSpec {
             } else if handler.options.stderr {
                 InputStream::Stderr
             } else {
-                continue;
+                InputStream::None
             };
 
             result.extend(PipeSpec::from_handler(handler, input_stream, context)?);

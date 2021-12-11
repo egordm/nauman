@@ -75,3 +75,12 @@ pub fn task_aborted(name: &str, policy: ExecutionPolicy) -> colored::ColoredStri
         },
     }
 }
+
+/// Truncates the given string to the given length.
+pub fn truncate_string(text: &str, max_length: usize) -> String {
+    if text.len() > max_length {
+        format!("{}...", &text[..max_length])
+    } else {
+        text.to_string()
+    }
+}

@@ -6,22 +6,12 @@ use std::{
     process::Stdio,
     os::unix::io::{AsRawFd, FromRawFd},
 };
-use std::collections::HashMap;
 use std::time::Instant;
-use crate::{
-    flow,
-    flow::CommandId,
-    logging::{MultiOutputStream, MultiWriter},
-    common::Env,
-    config,
-    config::{ExecutionPolicy, Shell, TaskHandler},
-    logging::{ActionShell, InputStream},
-    flow::Command,
-    logging::ActionCommandStart
-};
-use anyhow::{Context as AnyhowContext, Result};
+use crate::{flow, flow::CommandId, logging::{MultiOutputStream, MultiWriter}, common::Env, config, config::{ExecutionPolicy, Shell, TaskHandler}, logging::{ActionShell, InputStream}, flow::Command, logging::ActionCommandStart};
+use anyhow::{anyhow, Context as AnyhowContext, Result};
 use chrono::{Local};
-use crate::logging::{ActionCommandEnd, Logger};
+use crate::logging::{ActionCommandEnd, ActionSummary, Logger};
+use crate::utils::{resolve_cwd, with_tempfile};
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub enum ExecutionState {
@@ -62,11 +52,11 @@ pub struct ExecutionContext {
 }
 
 impl ExecutionContext {
-    pub fn new(options: config::Options, env: Env, cwd: PathBuf) -> Self {
+    pub fn new(options: config::Options, cwd: PathBuf) -> Self {
         Self {
             options,
-            env,
             cwd,
+            env: Env::default(),
             log_dir: PathBuf::new(),
             state: ExecutionState::Running,
             will_execute: true,
@@ -89,16 +79,6 @@ impl ExecutionContext {
     }
 }
 
-/// Returns cwd path relative to the current cwd.
-/// If the desired cwd is absolute, it is returned as is.
-pub fn resolve_cwd(current: &PathBuf, cwd: Option<&String>) -> PathBuf {
-    let cwd = cwd.map(PathBuf::from).unwrap_or_else(|| current.clone());
-    if cwd.is_absolute() {
-        cwd
-    } else {
-        current.join(cwd)
-    }
-}
 
 /// Reads the contents of a file into a buffer.
 fn read_buffer(source: &mut BufReader<File>, buffer: &mut [u8]) -> io::Result<Option<usize>> {
@@ -258,6 +238,7 @@ pub const ENV_JOB_NAME: &str = "NAUMAN_JOB_NAME";
 pub const ENV_JOB_ID: &str = "NAUMAN_JOB_ID";
 pub const ENV_TASK_NAME: &str = "NAUMAN_TASK_NAME";
 pub const ENV_TASK_ID: &str = "NAUMAN_TASK_ID";
+pub const ENV_OUTPUT_FILE: &str = "NAUMAN_OUTPUT_FILE";
 
 
 /// Executor responsible for executing a flow.
@@ -269,16 +250,13 @@ pub struct Executor<'a> {
 impl<'a> Executor<'a> {
     pub fn new(
         options: config::Options,
-        flow: &'a flow::Flow
+        flow: &'a flow::Flow,
     ) -> Result<Self> {
-        let mut env: Env = if options.system_env { std::env::vars().collect() } else { HashMap::new() };
-        env.extend(flow.env.clone());
-
         let cwd = resolve_cwd(&std::env::current_dir()?, flow.cwd.as_ref());
 
         Ok(Executor {
             flow,
-            context: ExecutionContext::new(options, env, cwd),
+            context: ExecutionContext::new(options, cwd),
         })
     }
 
@@ -287,6 +265,18 @@ impl<'a> Executor<'a> {
         &mut self,
         logger: &mut Logger,
     ) -> Result<()> {
+        // Setup dotenv
+        if self.context.options.system_env {
+            self.context.env.extend(Env::from_system())
+        }
+        if let Some(ref dotenv) = self.context.options.dotenv {
+            let (env, _err) = Env::from_path(dotenv)
+                .map_err(|e| anyhow!("Failed to load dotenv file: {:?}. Error: {}", dotenv, e))?;
+            // TODO: Handle errors in err
+            self.context.env.extend(env)
+        }
+        self.context.env.extend(self.flow.env.clone());
+
         // Create log dir
         self.context.log_dir = resolve_cwd(&self.context.cwd, self.context.options.log_dir.as_ref());
         self.context.log_dir.push(
@@ -307,6 +297,15 @@ impl<'a> Executor<'a> {
 
             results.push((command_id.clone(), result));
         }
+
+        let summary = ActionSummary {
+            flow: self.flow,
+            results: &results,
+        };
+
+        logger.flush()?;
+        logger.log_action(summary)?;
+
         Ok(())
     }
 
@@ -346,8 +345,23 @@ impl<'a> Executor<'a> {
             self.context.env.insert(ENV_TASK_NAME.to_string(), command.name.clone());
             self.context.env.insert(ENV_TASK_ID.to_string(), command_id.clone());
 
-            // Execute the actual command
-            execute_command(command, &mut self.context, logger)?
+            // Create temporary output file
+            with_tempfile(&self.context.options.temp_path.clone(), |output_file| {
+                self.context.env.insert(ENV_OUTPUT_FILE.to_string(), output_file.to_str().unwrap().to_string());
+
+                // Execute the actual command
+                let result = execute_command(command, &mut self.context, logger)?;
+
+                // Load the outputs
+                if output_file.exists() {
+                    let (env, _err) = Env::from_path(output_file)
+                        .map_err(|e| anyhow!("Failed to load output file: {:?}. Error: {}", output_file, e))?;
+                    // TODO: Handle errors in err
+                    self.context.env.extend(env);
+                }
+
+                Ok(result)
+            })?
         } else {
             ExecutionResult {
                 command_id: command_id.clone(),
@@ -372,3 +386,4 @@ impl<'a> Executor<'a> {
         Ok(result)
     }
 }
+

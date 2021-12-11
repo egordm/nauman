@@ -2,6 +2,7 @@ use std::{
     collections::HashMap,
     fmt::{Display, Formatter},
 };
+use std::path::PathBuf;
 use heck::SnakeCase;
 use lazy_static::lazy_static;
 use serde::{Serialize, Deserialize};
@@ -33,6 +34,11 @@ pub struct Options {
     /// Whether to use system environment variables.
     #[serde(default = "true_default")]
     pub system_env: bool,
+    /// Path to dotenv file.
+    pub dotenv: Option<PathBuf>,
+    #[serde(default = "temp_path_default")]
+    /// Path to a folder to store temporary files in
+    pub temp_path: PathBuf,
 }
 
 impl Default for Options {
@@ -45,8 +51,14 @@ impl Default for Options {
             log_level: LogLevel::default(),
             log_dir: None,
             system_env: true_default(),
+            dotenv: None,
+            temp_path: temp_path_default(),
         }
     }
+}
+
+fn temp_path_default() -> PathBuf {
+    std::env::temp_dir()
 }
 
 /// Shell to run command with
@@ -213,7 +225,7 @@ pub struct LogOptions {
     pub internal: bool,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
 pub struct FileHandler {
     /// The file or directory (in split mode) to write to.
     pub output: Option<String>,
@@ -223,7 +235,7 @@ pub struct FileHandler {
 }
 
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
 #[serde(rename_all = "snake_case", tag = "type")]
 pub enum LogHandlerType {
     /// Log to file handler.

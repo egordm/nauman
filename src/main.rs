@@ -1,5 +1,6 @@
 #[doc = include_str!("../README.md")]
 
+#[macro_use] extern crate prettytable;
 
 use std::{
     fs,
@@ -10,10 +11,10 @@ use crate::{
     execution::{Executor},
     logging::Logger
 };
-use clap::{Parser};
+use clap::{Parser, ValueHint};
 use crate::common::LogLevel;
 use anyhow::{anyhow, Context as AnyhowContext, Result};
-use crate::config::LogHandler;
+use crate::config::{LogHandler, LogHandlerType};
 use crate::logging::pprint;
 
 mod common;
@@ -21,6 +22,7 @@ mod config;
 mod logging;
 mod flow;
 mod execution;
+mod utils;
 
 /// Parse a single key-value pair
 fn parse_key_val<T, U>(s: &str) -> Result<(T, U), Box<dyn Error + Send + Sync + 'static>>
@@ -46,12 +48,12 @@ struct Opts {
     level: Option<LogLevel>,
     /// Dry run to check job configuration (default: false)
     #[clap(long)]
-    dry_run: Option<bool>,
+    dry_run: bool,
     /// Include ansi colors in output (default: true)
     #[clap(long)]
     ansi: Option<bool>,
     /// Directory to store logs in (default: current directory)
-    #[clap(long)]
+    #[clap(long, value_hint = ValueHint::FilePath)]
     log_dir: Option<String>,
     /// Whether to use system environment variables (default: true)
     #[clap(long)]
@@ -90,8 +92,8 @@ fn run() -> Result<()> {
     if let Some(level) = opts.level {
         options.log_level = level;
     }
-    if let Some(dry_run) = opts.dry_run {
-        options.dry_run = dry_run;
+    if opts.dry_run {
+        options.dry_run = opts.dry_run;
     }
     if let Some(ansi) = opts.ansi {
         options.ansi = ansi;
@@ -110,11 +112,14 @@ fn run() -> Result<()> {
 
     // Setup the logger
     colored::control::set_override(options.ansi);
-    let logging_handlers = if let Some(handlers) = job.logging.clone() {
+    let mut logging_handlers = if let Some(handlers) = job.logging.clone() {
         handlers
-    } else {
-        vec![LogHandler::default_console()]
-    };
+    } else { vec![]  };
+    // Add console handler if none present
+    if logging_handlers.iter().all(|h| h.handler != LogHandlerType::Console) {
+        logging_handlers.push(LogHandler::default_console());
+    }
+    // Build the logger
     let mut logger = Logger::new(logging_handlers, options.log_level);
 
     // Parse the job to a flow
