@@ -40,6 +40,7 @@ impl Default for LogLevel {
 
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct Env {
+    #[serde(flatten)]
     base: HashMap<String, String>,
 }
 
