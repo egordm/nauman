@@ -1,6 +1,6 @@
 [package]
 name = "nauman"
-version = "1.1.0"
+version = "1.1.1"
 edition = "2021"
 authors = ["Egor Dmitriev <egordmitriev2@gmail.com>"]
 description = "A CI inspired approach for local job automation"
@@ -21,7 +21,7 @@ colored = "2"
 regex = "1"
 lazy_static = "1.4.0"
 chrono = "0.4"
-clap = "3.0.0-beta.4"
+clap = { version = "3.0.0-beta.4", features = ["derive"] }
 dotenv = "0.15.0"
 rand = { version = "0.8.4", features = ["small_rng"] }
 prettytable-rs = "^0.8"
