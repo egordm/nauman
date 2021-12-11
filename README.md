@@ -64,6 +64,10 @@ Greetings egordm!
 
 ## Examples
 For more examples, see the [examples](examples) directory.
+* [Using Hooks](#using-hooks)
+* [Logging](#logging)
+* [Using Environment Variables](#using-environment-variables)
+* [More](https://github.com/EgorDm/nauman/tree/master/examples)
 
 ### Using Hooks
 [Hooks](#hooks) are first class citizens in `nauman`. They represent various events and callbacks that can occur during the execution of a job.
@@ -249,6 +253,16 @@ In the last task we can see that the `NAUMAN_PREV_NAME` and `NAUMAN_PREV_CODE` e
 <p align="right">(<a href="#top">back to top</a>)</p>
 
 ## Features
+* [Hook everything](#hook-everything)
+* [Flexible Logging](#flexible-logging)
+* [Context variables](#context-variables)
+* [Configurable task plan](#configurable-task-plan)
+* [Different shell types](#different-shell-types)
+* [Dry run](#dry-run)
+* [Task Outputs](#task-outputs)
+* [Multiline commands](#multiline-commands)
+* [Dotenv files](#dotenv-files)
+* [Change your working directory](#change-your-working-directory)
 
 ### Hook everything
 You can create hooks for all the possible outcomes and events of your job or your task. Create job or task-local hooks like this:
@@ -391,6 +405,22 @@ nauman --dry-run my_job.yml
 
 <p align="right">(<a href="#top">back to top</a>)</p>
 
+### Task Outputs
+During the execution of every task, a temporary file is created where you can store the output variables. These files are automatically deleted after the task is finished. The variables specified in the output files will be loaded into the global context as environment variables.
+
+The output file accepts dotenv style syntax.
+
+```yaml
+tasks:
+  ...
+  - name: Append output to the output file
+    run: echo "foo=bar"  >> "$NAUMAN_OUTPUT_FILE"
+  - name: Use the output variable
+    run: echo $foo
+```
+
+<p align="right">(<a href="#top">back to top</a>)</p>
+
 ### Multiline commands
 Sometimes commands can take up more space than a single line. You can use multiline strings to define your commands.
 
@@ -402,6 +432,16 @@ tasks:
     run: |
       import os
       print(os.environ['NAUMAN_TASK_NAME'])
+```
+
+<p align="right">(<a href="#top">back to top</a>)</p>
+
+### Dotenv files
+You can use dotenv files to define variables for your tasks.
+
+```yaml
+options:
+  dotenv: /path/to/my_env.env
 ```
 
 <p align="right">(<a href="#top">back to top</a>)</p>
@@ -512,10 +552,10 @@ If this is not what you are looking for, check out these cool alternatives:
 <p align="right">(<a href="#top">back to top</a>)</p>
 
 ## TODO
-* [ ] Add support for .env files
+* [x] Add support for .env files
 * [ ] Add more tests
 * [ ] Add a way to natively run web requests
-* [ ] Add a way to write outputs of different tasks
+* [x] Add a way to write outputs of different tasks
 * [ ] Add a templating system
 * [ ] Add a way to specify per log whether ansi is enabled or not
 * [ ] Add flock support

@@ -1,0 +1,13 @@
+name: Example using Outputs
+
+tasks:
+  - name: Store some variables into output
+    run: |
+      echo HELLO=Hello >> "$NAUMAN_OUTPUT_FILE"
+      echo USER=$USER >> "$NAUMAN_OUTPUT_FILE"
+      echo TMP_FILE=$TMP_FILE >> "$NAUMAN_OUTPUT_FILE"
+      echo $NAUMAN_OUTPUT_FILE
+  - name: Use output variables
+    run: echo "$HELLO $USER"
+  - name: Test is temp file still exists (it should not, aka it fails)
+    run: test -f "$TMP_FILE"
