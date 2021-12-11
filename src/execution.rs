@@ -65,8 +65,8 @@ impl ExecutionContext {
     pub fn new(options: config::Options, env: Env, cwd: PathBuf) -> Self {
         Self {
             options,
-            env,
             cwd,
+            env: Env::default(),
             log_dir: PathBuf::new(),
             state: ExecutionState::Running,
             will_execute: true,
@@ -271,9 +271,6 @@ impl<'a> Executor<'a> {
         options: config::Options,
         flow: &'a flow::Flow
     ) -> Result<Self> {
-        let mut env: Env = if options.system_env { std::env::vars().collect() } else { HashMap::new() };
-        env.extend(flow.env.clone());
-
         let cwd = resolve_cwd(&std::env::current_dir()?, flow.cwd.as_ref());
 
         Ok(Executor {
