@@ -1,8 +1,29 @@
 # Changelog
+## [1.1.2] - 2021-12-11
+
+### Bug Fixes
+- [BUGFIX] Fixed wrong parsing of env section
+
+### Continuous Integration
+- [CI] Bumped cargo version
+
+### Testing
+- [TESTS] Added integration tests
+
+## [1.1.1] - 2021-12-11
+
+### Bug Fixes
+- [BUGFIX] Bumped version in cargo.toml
+- [BUGFIX] Fixed clap requiring a derive feature flag in newer versions
+
 ## [1.1.0] - 2021-12-11
 
 ### Bug Fixes
 - [BUGFIX] Updated dry-run to be a flag in cli
+
+### Continuous Integration
+- [CI] Fixed code style
+- [CI] Added cliff for changelog gen
 
 ### Documentation
 - [DOCS] Split Job Syntax into a separate file
@@ -20,10 +41,6 @@
 
 ### Other
 - Update README.md
-
-### Styling
-- [CI] Fixed code style
-- [CI] Added cliff for changelog gen
 
 ## [1.0.0] - 2021-12-05
 
