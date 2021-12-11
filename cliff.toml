@@ -37,7 +37,7 @@ commit_parsers = [
     { message = "^\\[FEATURE\\]", group = "Features"},
     { message = "^\\[BUGFIX\\]", group = "Bug Fixes"},
     { message = "^\\[(DOCS|Docs)\\]", group = "Documentation"},
-    { message = "^\\[CI\\]", group = "Styling"},
+    { message = "^\\[CI\\]", group = "Continuous Integration"},
     { message = "^\\[TESTS\\]", group = "Testing"},
     { message = "^\\[CHORE\\]", group = "Miscellaneous Tasks"},
     { message = "^Merge", skip = true},

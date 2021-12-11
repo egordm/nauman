@@ -10,4 +10,4 @@ tasks:
   - name: Use output variables
     run: echo "$HELLO $USER"
   - name: Test is temp file still exists (it should not, aka it fails)
-    run: test -f "$TMP_FILE"
+    run: ! test -f "$TMP_FILE"

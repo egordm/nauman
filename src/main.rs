@@ -2,6 +2,9 @@
 
 #[macro_use] extern crate prettytable;
 
+#[cfg(test)]
+extern crate test_case;
+
 use std::{
     fs,
 };
@@ -63,6 +66,20 @@ struct Opts {
     env: Vec<(String, String)>,
 }
 
+impl Default for Opts {
+    fn default() -> Self {
+        Self {
+            job: "".to_string(),
+            level: None,
+            dry_run: false,
+            ansi: None,
+            log_dir: None,
+            system_env: None,
+            env: vec![]
+        }
+    }
+}
+
 fn main() {
    match run() {
        Ok(_) => {}
@@ -75,7 +92,10 @@ fn main() {
 
 fn run() -> Result<()> {
     let opts: Opts = Opts::parse();
+    process(opts)
+}
 
+fn process(opts: Opts) -> Result<()> {
     // Read and parse the job file
     let contents = fs::read_to_string(&opts.job)
         .with_context(|| format!("Failed to read job file: {}", &opts.job))?;
@@ -135,4 +155,29 @@ fn run() -> Result<()> {
         .map_err(|e| anyhow!("Fatal error occurred during job execution: {}", e))?;
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use test_case::test_case;
+    use std::path::PathBuf;
+    use std::process::Command;
+    use crate::{Opts, process};
+
+    #[test_case("env-vars.yml")]
+    #[test_case("health-checks.yml")]
+    #[test_case("hello-world.yml")]
+    #[test_case("logging.yml")]
+    #[test_case("multi-shell.yml")]
+    #[test_case("outputs.yml")]
+    fn integration_tests(example: &str) {
+        let mut opts = Opts::default();
+
+        let example_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("examples")
+            .join(example).to_str().unwrap().to_string();
+
+        opts.job = example_path;
+        process(opts).expect("Failed to execute example job");
+    }
 }
