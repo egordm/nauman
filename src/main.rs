@@ -1,5 +1,6 @@
 #[doc = include_str!("../README.md")]
 
+#[macro_use] extern crate prettytable;
 
 use std::{
     fs,

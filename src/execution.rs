@@ -10,7 +10,7 @@ use std::time::Instant;
 use crate::{flow, flow::CommandId, logging::{MultiOutputStream, MultiWriter}, common::Env, config, config::{ExecutionPolicy, Shell, TaskHandler}, logging::{ActionShell, InputStream}, flow::Command, logging::ActionCommandStart};
 use anyhow::{anyhow, Context as AnyhowContext, Result};
 use chrono::{Local};
-use crate::logging::{ActionCommandEnd, Logger};
+use crate::logging::{ActionCommandEnd, ActionSummary, Logger};
 use crate::utils::{resolve_cwd, with_tempfile};
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
@@ -297,6 +297,15 @@ impl<'a> Executor<'a> {
 
             results.push((command_id.clone(), result));
         }
+
+        let summary = ActionSummary {
+            flow: self.flow,
+            results: &results,
+        };
+
+        logger.flush()?;
+        logger.log_action(summary)?;
+
         Ok(())
     }
 
@@ -345,7 +354,7 @@ impl<'a> Executor<'a> {
 
                 // Load the outputs
                 if output_file.exists() {
-                    let (env, _err) = Env::from_path(&output_file)
+                    let (env, _err) = Env::from_path(output_file)
                         .map_err(|e| anyhow!("Failed to load output file: {:?}. Error: {}", output_file, e))?;
                     // TODO: Handle errors in err
                     self.context.env.extend(env);
