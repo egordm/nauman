@@ -1,6 +1,6 @@
 [package]
 name = "nauman"
-version = "1.0.0"
+version = "1.1.0"
 edition = "2021"
 authors = ["Egor Dmitriev <egordmitriev2@gmail.com>"]
 description = "A CI inspired approach for local job automation"
