@@ -71,6 +71,7 @@ impl Env {
         self.base.insert(k, v)
     }
 
+    #[allow(dead_code)]
     pub fn get(&self, k: &str) -> Option<&String> {
         self.base.get(k)
     }

@@ -14,10 +14,12 @@ pub enum InputStream {
 }
 
 impl InputStream {
+    #[allow(dead_code)]
     pub fn is_stdout(&self) -> bool {
         !matches!(self, InputStream::Stderr)
     }
 
+    #[allow(dead_code)]
     pub fn is_stderr(&self) -> bool {
         !matches!(self, InputStream::Stdout)
     }
@@ -41,6 +43,7 @@ pub struct FileOutputSpec {
 #[derive(Debug, Clone)]
 pub enum OutputStreamSpec {
     Stdout,
+    #[allow(dead_code)]
     Stderr,
     File(FileOutputSpec),
 }
