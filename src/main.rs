@@ -13,7 +13,7 @@ use crate::{
 use clap::{Parser, ValueHint};
 use crate::common::LogLevel;
 use anyhow::{anyhow, Context as AnyhowContext, Result};
-use crate::config::LogHandler;
+use crate::config::{LogHandler, LogHandlerType};
 use crate::logging::pprint;
 
 mod common;
@@ -111,11 +111,14 @@ fn run() -> Result<()> {
 
     // Setup the logger
     colored::control::set_override(options.ansi);
-    let logging_handlers = if let Some(handlers) = job.logging.clone() {
+    let mut logging_handlers = if let Some(handlers) = job.logging.clone() {
         handlers
-    } else {
-        vec![LogHandler::default_console()]
-    };
+    } else { vec![]  };
+    // Add console handler if none present
+    if logging_handlers.iter().all(|h| h.handler != LogHandlerType::Console) {
+        logging_handlers.push(LogHandler::default_console());
+    }
+    // Build the logger
     let mut logger = Logger::new(logging_handlers, options.log_level);
 
     // Parse the job to a flow

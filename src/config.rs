@@ -225,7 +225,7 @@ pub struct LogOptions {
     pub internal: bool,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
 pub struct FileHandler {
     /// The file or directory (in split mode) to write to.
     pub output: Option<String>,
@@ -235,7 +235,7 @@ pub struct FileHandler {
 }
 
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
 #[serde(rename_all = "snake_case", tag = "type")]
 pub enum LogHandlerType {
     /// Log to file handler.

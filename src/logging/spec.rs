@@ -10,6 +10,7 @@ pub enum InputStream {
     Stdout,
     Stderr,
     Both,
+    None,
 }
 
 impl InputStream {
@@ -87,23 +88,10 @@ impl PipeSpec {
                 }])
             },
             LogHandlerType::Console => {
-                let mut result = Vec::new();
-
-                if input.is_stdout() {
-                    result.push(Self {
-                        input: InputStream::Stdout,
-                        output: OutputStreamSpec::Stdout,
-                    });
-                }
-
-                if input.is_stderr() {
-                    result.push(Self {
-                        input: InputStream::Stderr,
-                        output: OutputStreamSpec::Stderr,
-                    });
-                }
-
-                Ok(result)
+                Ok(vec![Self {
+                    input,
+                    output: OutputStreamSpec::Stdout,
+                }])
             },
         }
     }
@@ -125,7 +113,7 @@ impl LoggingSpec {
             } else if handler.options.stderr {
                 InputStream::Stderr
             } else {
-                continue;
+                InputStream::None
             };
 
             result.extend(PipeSpec::from_handler(handler, input_stream, context)?);
