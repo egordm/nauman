@@ -25,6 +25,7 @@ clap = { version = "3.0.0-beta.4", features = ["derive"] }
 dotenv = "0.15.0"
 rand = { version = "0.8.4", features = ["small_rng"] }
 prettytable-rs = "^0.8"
+crossbeam-channel = "0.5"
 
 [dev-dependencies]
 test-case = "1.2.1"

@@ -1,15 +1,10 @@
-use std::{
-    io,
-    fs::File,
-    io::{BufReader, Read},
-    path::{PathBuf},
-    process::Stdio,
-    os::unix::io::{AsRawFd, FromRawFd},
-};
+use std::{io, fs::File, io::{BufReader, Read}, path::{PathBuf}, process::Stdio, os::unix::io::{AsRawFd, FromRawFd}, thread};
+use std::thread::JoinHandle;
 use std::time::Instant;
 use crate::{flow, flow::CommandId, logging::{MultiOutputStream, MultiWriter}, common::Env, config, config::{ExecutionPolicy, Shell, TaskHandler}, logging::{ActionShell, InputStream}, flow::Command, logging::ActionCommandStart};
 use anyhow::{anyhow, Context as AnyhowContext, Result};
 use chrono::{Local};
+use crossbeam_channel::{bounded, Sender};
 use crate::logging::{ActionCommandEnd, ActionSummary, Logger};
 use crate::utils::{resolve_cwd, with_tempfile};
 
@@ -81,7 +76,7 @@ impl ExecutionContext {
 
 
 /// Reads the contents of a file into a buffer.
-fn read_buffer(source: &mut BufReader<File>, buffer: &mut [u8]) -> io::Result<Option<usize>> {
+fn read_buffer<T: std::io::Read>(source: &mut BufReader<T>, buffer: &mut [u8]) -> io::Result<Option<usize>> {
     match source.read(buffer) {
         Ok(count) => Ok(Some(count)),
         Err(e) => match e.kind() {
@@ -91,6 +86,32 @@ fn read_buffer(source: &mut BufReader<File>, buffer: &mut [u8]) -> io::Result<Op
     }
 }
 
+fn capture_stream<T: std::io::Read + std::marker::Send + 'static>(
+    source: BufReader<T>,
+    sender: Sender<([u8; BUFFER_SIZE], usize, InputStream)>,
+    stream: InputStream,
+) -> JoinHandle<anyhow::Result<()>> {
+    thread::spawn(move || {
+        let mut buffer = [0; BUFFER_SIZE];
+        let mut source = source;
+
+        loop {
+            match read_buffer(&mut source, &mut buffer) {
+                Ok(None) => break,
+                Ok(Some(size)) if size == 0 => {
+                    break;
+                }
+                Ok(Some(size)) => {
+                    sender.send((buffer, size, stream)).unwrap();
+                }
+
+                Err(e) => return Err(anyhow::Error::from(e)),
+            }
+        }
+        Ok(())
+    })
+}
+
 const BUFFER_SIZE: usize = 1024; // 1 KB
 
 /// Responsible for executing a command and capturing its output.
@@ -98,43 +119,25 @@ pub fn capture_command(
     child: &std::process::Child,
     output: &mut MultiOutputStream,
 ) -> Result<()> {
-    // TODO: split into two functions
-    let mut buffer = [0; BUFFER_SIZE];
-    let (mut stdout_done, mut stderr_done) = (false, false);
-    let mut stdout = BufReader::new(unsafe {
+    let stdout = BufReader::new(unsafe {
         File::from_raw_fd(child.stdout.as_ref().unwrap().as_raw_fd())
     });
-    let mut stderr = BufReader::new(unsafe {
+    let stderr = BufReader::new(unsafe {
         File::from_raw_fd(child.stderr.as_ref().unwrap().as_raw_fd())
     });
 
-    loop {
-        match read_buffer(&mut stdout, &mut buffer) {
-            Ok(None) => break,
-            Ok(Some(size)) if size == 0 => {
-                stdout_done = true;
-            }
-            Ok(Some(size)) => {
-                output.write_stream(InputStream::Stdout, &buffer[0..size]).unwrap();
-            }
-            Err(e) => return Err(e.into()),
-        }
+    let (s1, r) = bounded(4);
+    let s2 = s1.clone();
 
-        match read_buffer(&mut stderr, &mut buffer) {
-            Ok(None) => break,
-            Ok(Some(size)) if size == 0 => {
-                stderr_done = true;
-            }
-            Ok(Some(size)) => {
-                output.write_stream(InputStream::Stderr, &buffer[0..size]).unwrap();
-            }
-            Err(e) => return Err(e.into()),
-        }
+    let thread_stdout = capture_stream(stdout, s1, InputStream::Stdout);
+    let thread_stderr = capture_stream(stderr, s2, InputStream::Stderr);
 
-        if stderr_done && stdout_done {
-            break;
-        }
+    for (buffer, size, stream) in r {
+        output.write_stream(stream, &buffer[..size])?;
     }
+
+    thread_stdout.join().unwrap()?;
+    thread_stderr.join().unwrap()?;
 
     Ok(())
 }
